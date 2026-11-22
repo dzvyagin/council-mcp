@@ -100,12 +100,16 @@ const SECRET_PATHS = [
   ".git/*",
 ];
 
+/** Имя MCP-сервера ответов в session/new: инструменты видны как council_<tool>. */
+export const ANSWER_SERVER = "council";
+
 /**
- * Права участника (V2 `permissions`, побеждает последнее совпадение): запрещено всё, кроме
- * чтения и поиска внутри проекта, своего read-only субагента и инструментов ответа совета.
+ * Права (V2 `permissions`, побеждает последнее совпадение): запрещено всё, кроме чтения и поиска
+ * внутри проекта. Участнику дополнительно разрешены свой read-only субагент и инструменты ответа
+ * совета; субагенту и служебным агентам — нет (ответ сдаёт только сам участник).
  * Правило deny на `execute` (Code Mode) входит в общий запрет: MCP-инструменты видны напрямую.
  */
-export function readOnlyRules(allowSubagent: boolean) {
+export function readOnlyRules(role: "participant" | "helper") {
   return [
     rule("*", "*", "deny"),
     rule("read", "*", "allow"),
@@ -113,8 +117,9 @@ export function readOnlyRules(allowSubagent: boolean) {
     rule("grep", "*", "allow"),
     ...SECRET_PATHS.map((p) => rule("read", p, "deny")),
     rule("external_directory", "*", "deny"),
-    ...(allowSubagent ? [rule("subagent", EXPLORE_AGENT, "allow")] : []),
-    rule(`${PROVIDER}_*`, "*", "allow"),
+    ...(role === "participant"
+      ? [rule("subagent", EXPLORE_AGENT, "allow"), rule(`${ANSWER_SERVER}_*`, "*", "allow")]
+      : []),
   ];
 }
 
@@ -142,20 +147,20 @@ export function opencodeConfig(model: ModelConfig, config: CouncilConfig): Recor
         models: { [MODEL_KEY]: modelEntry },
       },
     },
-    permissions: readOnlyRules(false),
+    permissions: readOnlyRules("helper"),
     agents: {
       councillor: {
         mode: "primary",
         description:
           "Участник совета: исследует проект только на чтение и сдаёт ответ инструментом",
-        permissions: readOnlyRules(true),
+        permissions: readOnlyRules("participant"),
       },
       // Генерация заголовка сессии — лишний вызов модели на каждого участника.
       title: { disabled: true },
       [EXPLORE_AGENT]: {
         mode: "subagent",
         description: "Read-only поиск и чтение кода проекта по поручению участника совета",
-        permissions: readOnlyRules(false),
+        permissions: readOnlyRules("helper"),
       },
     },
   };

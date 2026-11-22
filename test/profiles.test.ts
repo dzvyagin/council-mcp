@@ -41,7 +41,7 @@ function decide(rules: Rule[], action: string, resource: string): string {
 }
 
 describe("права участника opencode", () => {
-  const rules = readOnlyRules(true);
+  const rules = readOnlyRules("participant");
   it.each([
     ["read", "src/app.ts", "allow"],
     ["glob", "**/*.sql", "allow"],
@@ -65,8 +65,11 @@ describe("права участника opencode", () => {
     expect(decide(rules, action, resource)).toBe(effect);
   });
 
-  it("субагент council-explore не может запускать субагентов", () => {
-    expect(decide(readOnlyRules(false), "subagent", EXPLORE_AGENT)).toBe("deny");
+  it("субагент не запускает субагентов и не сдаёт ответы за участника", () => {
+    const helper = readOnlyRules("helper");
+    expect(decide(helper, "subagent", EXPLORE_AGENT)).toBe("deny");
+    expect(decide(helper, "council_submit_vote", "*")).toBe("deny");
+    expect(decide(helper, "read", "src/app.ts")).toBe("allow");
   });
 });
 
@@ -118,7 +121,7 @@ describe("opencodeProfile", () => {
           },
         },
       });
-      expect(oc.agents.councillor?.permissions).toEqual(readOnlyRules(true));
+      expect(oc.agents.councillor?.permissions).toEqual(readOnlyRules("participant"));
       expect(oc.agents[EXPLORE_AGENT]?.mode).toBe("subagent");
       expect(oc.agents.title).toEqual({ disabled: true });
     } finally {

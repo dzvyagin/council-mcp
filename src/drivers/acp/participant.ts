@@ -19,7 +19,7 @@ import {
 } from "../../core/participant.js";
 import { reminderPrompt } from "../../core/prompts/common.js";
 import type { AnswerServer } from "./answer-server.js";
-import type { LaunchSpec } from "./profiles.js";
+import { ANSWER_SERVER, type LaunchSpec } from "./profiles.js";
 
 /**
  * Участник совета = один процесс ACP-агента и одна сессия в нём на весь запуск.
@@ -128,7 +128,7 @@ export class AcpParticipant implements Participant {
         const session = await connection.agent
           .buildSession({
             cwd: workspace,
-            mcpServers: [{ type: "http", name: "council", ...registration.endpoint }],
+            mcpServers: [{ type: "http", name: ANSWER_SERVER, ...registration.endpoint }],
           })
           .start();
         for (const option of launch.configOptions) {
