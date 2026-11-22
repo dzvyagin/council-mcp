@@ -80,9 +80,10 @@ describe("CLI", () => {
 
   it("run без вопроса и с неподдерживаемым режимом — код 2", async () => {
     expect((await run(["run"], baseEnv)).code).toBe(2);
-    const consensus = await run(["run", "--mode", "consensus", "-q", "x"], baseEnv);
-    expect(consensus.code).toBe(2);
-    expect(consensus.err).toMatch(/появится в следующих фазах/);
+    const debate = await run(["run", "--mode", "debate", "-q", "x"], baseEnv);
+    expect(debate.code).toBe(2);
+    expect(debate.err).toMatch(/появится в следующих фазах/);
+    expect((await run(["run", "-q", "x", "--max-rounds", "abc"], baseEnv)).code).toBe(2);
   });
 
   it("run, где никто не ответил, — код 1", async () => {

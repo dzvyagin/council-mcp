@@ -36,6 +36,11 @@ export interface AskRequest<T> {
   round: string;
   prompt: string;
   tool: AnswerTool<T>;
+  /**
+   * Правила раунда сверх схемы (например, «смена decision_key — только с triggered_by»).
+   * Возвращает текст ошибки — он уходит модели, и она может исправить ответ.
+   */
+  validate?: (value: T) => string | undefined;
   timeoutS: number;
   signal?: AbortSignal;
 }

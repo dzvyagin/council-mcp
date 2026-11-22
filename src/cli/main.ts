@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 import {
@@ -31,8 +32,8 @@ export interface CliIO {
 const HELP = `council — совет моделей для архитектурных решений
 
 Использование:
-  council run --mode vote --question "<вопрос>" [--option A --option B] [--notes "<ограничения>"]
-              [--file <путь>]... [--json]
+  council run --mode consensus|vote --question "<вопрос>" [--notes "<ограничения>"]
+              [--file <путь>]... [--option A --option B] [--max-rounds N] [--diff-file <путь>] [--json]
   council doctor      проверить конфиг, эндпоинт, модели и агента-участника
   council info        показать конфигурацию (без секретов)
   council help        эта справка
@@ -99,6 +100,8 @@ async function run(args: string[], io: CliIO): Promise<number> {
       option: { type: "string", multiple: true },
       notes: { type: "string" },
       file: { type: "string", multiple: true },
+      "max-rounds": { type: "string" },
+      "diff-file": { type: "string" },
       json: { type: "boolean", default: false },
     },
   });
@@ -106,6 +109,12 @@ async function run(args: string[], io: CliIO): Promise<number> {
   if (!MODES.includes(mode)) throw new InputError(`--mode: ожидается ${MODES.join(" | ")}`);
   const question = values.question ?? positionals.join(" ");
   if (!question.trim()) throw new InputError('нужен вопрос: --question "…"');
+
+  const maxRounds = values["max-rounds"] === undefined ? undefined : Number(values["max-rounds"]);
+  if (maxRounds !== undefined && !Number.isInteger(maxRounds))
+    throw new InputError("--max-rounds: целое число");
+  const diffFile = values["diff-file"];
+  const diff = diffFile === undefined ? undefined : await readFile(diffFile, "utf8");
 
   const config = loadConfig(io.configDeps());
   const driver = io.makeDriver(config);
@@ -117,6 +126,8 @@ async function run(args: string[], io: CliIO): Promise<number> {
         ...(values.option && { options: values.option }),
         ...(values.notes !== undefined && { notes: values.notes }),
         ...(values.file && { files: values.file }),
+        ...(maxRounds !== undefined && { maxRounds }),
+        ...(diff !== undefined && { diff }),
       },
       {
         config,

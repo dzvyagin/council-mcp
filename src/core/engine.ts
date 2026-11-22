@@ -84,12 +84,13 @@ export class CouncilSession {
     }));
   }
 
-  /** Задаёт вопрос всем работающим местам; возвращает валидные ответы по меткам. */
+  /** Задаёт вопрос работающим местам (или подмножеству); возвращает валидные ответы по меткам. */
   async askAll<T>(
     round: string,
     build: (seat: Seat) => Omit<AskRequest<T>, "round" | "timeoutS" | "signal">,
+    only?: (seat: Seat) => boolean,
   ): Promise<RoundAnswers<T>> {
-    const seats = this.activeSeats;
+    const seats = this.activeSeats.filter((s) => only?.(s) ?? true);
     this.options.emit({ type: "round_started", round, aliases: seats.map((s) => s.alias) });
     const answers: RoundAnswers<T> = new Map();
     await Promise.all(

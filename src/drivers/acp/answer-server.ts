@@ -26,6 +26,7 @@ export interface AnswerEndpoint {
 
 interface Pending {
   tool: string;
+  validate?: ((args: unknown) => string | undefined) | undefined;
   resolve: (value: unknown) => void;
 }
 
@@ -85,15 +86,19 @@ export class AnswerServer {
     this.registrations.delete(token);
   }
 
-  /** Ждать валидный вызов инструмента `tool` от участника. */
-  expect(token: string, tool: string): Expectation {
+  /** Ждать валидный вызов инструмента `tool` от участника; `validate` — правила раунда сверх схемы. */
+  expect(
+    token: string,
+    tool: string,
+    validate?: (args: unknown) => string | undefined,
+  ): Expectation {
     const reg = this.registrations.get(token);
     if (!reg) throw new Error("участник не зарегистрирован в AnswerServer");
     let settle!: (value: unknown) => void;
     const promise = new Promise<unknown>((resolve) => {
       settle = resolve;
     });
-    reg.pending = { tool, resolve: settle };
+    reg.pending = { tool, validate, resolve: settle };
     return {
       promise,
       cancel: () => {
@@ -154,6 +159,18 @@ export class AnswerServer {
               ? `Сейчас ожидается ${pending.tool}.`
               : "Сейчас ответ не ожидается.";
             return { isError: true, content: [{ type: "text", text: hint }] };
+          }
+          const problem = pending.validate?.(args);
+          if (problem !== undefined) {
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: `Ответ не принят: ${problem}. Исправь и вызови ${tool.name} снова.`,
+                },
+              ],
+            };
           }
           delete reg.pending;
           pending.resolve(args);

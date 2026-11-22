@@ -118,7 +118,7 @@ describe("deliberate: vote", () => {
     const driver = new FakeDriver({});
     const bad = [
       { mode: "vote" as const, question: "  " },
-      { mode: "consensus" as const, question: "q" },
+      { mode: "debate" as const, question: "q" },
       { mode: "vote" as const, question: "q", options: ["a"] },
       { mode: "vote" as const, question: "q", options: ["a", "a"] },
     ];

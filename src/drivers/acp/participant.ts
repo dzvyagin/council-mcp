@@ -202,7 +202,16 @@ export class AcpParticipant implements Participant {
       });
     }
 
-    const expectation = this.options.answers.expect(this.token, request.tool.name);
+    const validate = request.validate;
+    const expectation = this.options.answers.expect(
+      this.token,
+      request.tool.name,
+      validate &&
+        ((args) => {
+          const parsed = request.tool.schema.safeParse(args);
+          return parsed.success ? validate(parsed.data) : undefined;
+        }),
+    );
     const deadline = AbortSignal.timeout(request.timeoutS * 1000);
     const stops = request.signal ? [deadline, request.signal] : [deadline];
 

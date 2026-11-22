@@ -10,7 +10,12 @@ import {
 } from "../src/core/participant.js";
 
 /** Ответ фейка: значение (валидируется схемой инструмента) или ошибка. */
-export type FakeReply = { value: unknown } | { error: ParticipantErrorKind } | { throws: string };
+export type FakeReply =
+  | { value: unknown }
+  | { error: ParticipantErrorKind }
+  | { throws: string }
+  /** Ответ, зависящий от метки участника (метки раздаются по seed) и текста промпта. */
+  | { fn: (ctx: { alias: string; prompt: string }) => unknown };
 
 export interface FakeScript {
   /** modelId → раунд → очередь ответов (по одному на попытку). */
@@ -59,9 +64,14 @@ export class FakeDriver implements ParticipantDriver {
             durationMs: 5,
           });
         }
-        const parsed = req.tool.schema.safeParse(reply.value);
+        const raw =
+          "fn" in reply ? reply.fn({ alias: spec.alias, prompt: req.prompt }) : reply.value;
+        const parsed = req.tool.schema.safeParse(raw);
         if (!parsed.success)
-          throw new Error(`фейк: невалидный ответ ${JSON.stringify(reply.value)}`);
+          throw new Error(`фейк: невалидный ответ ${JSON.stringify(raw)}: ${parsed.error.message}`);
+        const problem = req.validate?.(parsed.data);
+        if (problem !== undefined)
+          throw new Error(`фейк: ответ нарушает правила раунда: ${problem}`);
         return Promise.resolve({
           ok: true,
           value: parsed.data,
