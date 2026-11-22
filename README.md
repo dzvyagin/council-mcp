@@ -1,113 +1,80 @@
 # council-mcp
 
-MCP-сервер «совета моделей» для ключевых архитектурных решений: consensus, debate, vote и review. Участники — агенты (через ACP), итог — решение с особым мнением и ADR в `docs/adr/`.
+Совет моделей для архитектурных решений. Несколько моделей обсуждают вопрос, читают ваш проект и
+возвращают решение, возражения и ADR в `docs/adr/`. Подключается к opencode, DeepSeek Harness и
+любому MCP-хосту.
 
-Статус: фазы 0–9 плана — режимы consensus, debate, vote, review, discover, Double Diamond, сервисные команды и плагин opencode (защита путей, состояние совета в контексте, подсказка роутера) через MCP-сервер (stdio и HTTP) для opencode V2, DSH и других хостов. Не проверено на реальных моделях банка. План — [docs/PLAN.md](docs/PLAN.md).
+## Что нужно
 
-## Как это устроено
+- Node.js 22.12+
+- [opencode](https://opencode.ai) V2 в `PATH`: им работают участники совета, только на чтение
+- OpenAI-совместимый эндпоинт и минимум две модели
 
-Каждый участник — отдельный процесс ACP-агента (по умолчанию `opencode acp`, opencode V2), который council-mcp запускает со своей моделью, изолированным конфигом и правами только на чтение: читать и искать по проекту, звать read-only субагента; без правок, шелла и веба, без доступа к `.env*` и `.council/`. Ответ раунда агент сдаёт вызовом типизированного инструмента на loopback MCP-сервере council-mcp (127.0.0.1, токен на участника).
-
-Агента council-mcp не содержит: он использует установленный у пользователя (`council doctor` покажет, что найдено).
-
-## Быстрый старт
-
-```bash
-npm install && npm run build
-```
+## Установка
 
 ```bash
-cd /path/to/project && node /path/to/council-mcp/dist/cli/index.js setup --host opencode
+git clone <репозиторий> ~/council-mcp
+cd ~/council-mcp && npm install && npm run build
 ```
 
-`setup` кладёт в проект команды и агентов opencode, Skill, фрагмент AGENTS.md, `council.config.json` и `opencode.jsonc` с MCP-сервером (существующие файлы не трогает: для чужого `opencode.jsonc` выводит блок для вставки), добавляет `.council/` в `.gitignore` и запускает `doctor`. Остаётся задать в окружении `COUNCIL_BASE_URL`, `COUNCIL_API_KEY`, `COUNCIL_MODELS` и перезапустить opencode. Если MCP-сервер уже подключён — то же делает MCP-промпт `/council:setup`.
+Получится `~/council-mcp/dist/`. Дальше нужна только эта папка, `npm install` в проектах не нужен.
 
-## Плагин opencode
+## Подключение к opencode
 
-`council setup --host opencode` ставит `.opencode/plugins/council.ts` (логика — в `dist/plugin/lib.js`):
+1. Задайте переменные окружения (например, в `~/.bashrc`):
 
-- **Защита путей.** Правка файлов из `protectedPaths` (по умолчанию `**/migrations/**`, `**/*.sql`, `**/openapi*.{yml,yaml,json}`, `docs/architecture/**`) инструментами `edit`, `write`, `patch` блокируется с сообщением «нужно решение совета», если в этой сессии не было запуска совета и нет ADR, упоминающего файл. Аварийное отключение — `COUNCIL_GUARD=off`.
-- **Состояние совета в каждом запросе агента** (`<council-state>`: активный процесс, фаза, гейты, worktree, последние ADR) — переживает сжатие контекста; в запросе сжатия — просьба сохранить его в итоге.
-- **Подсказка роутера** на обычные промпты: `COUNCIL_AUTO_ROUTER=suggest` (по умолчанию — предложить команду), `invoke` (запустить), `off`.
+   ```bash
+   export COUNCIL_BASE_URL=https://llm.example/v1
+   export COUNCIL_API_KEY=...
+   export COUNCIL_MODELS=model-a,model-b,model-c
+   ```
 
-## Бюджет
+2. Подготовьте проект:
 
-`budget.max_calls`, `max_tokens`, `max_duration_s` (в запросе или `defaults.budget` в конфиге): прогноз выше лимита — отказ до запуска (`confirm_budget` — запустить всё равно); во время запуска лимит жёсткий — текущий раунд дожидается, новые не начинаются, итог синтезируется по имеющемуся со статусом `partial`, ADR пишется.
+   ```bash
+   cd /path/to/project
+   node ~/council-mcp/dist/cli/index.js setup --host opencode
+   ```
 
-## Оценка качества
+3. Перезапустите opencode и проверьте подключение командой `/council-doctor`.
 
-```bash
-npx tsx eval/run.ts --out eval/out
-```
+`setup` не трогает существующие файлы. Если в проекте уже есть `opencode.jsonc`, команда выведет
+блок, который нужно вставить вручную.
 
-9 задач в `eval/cases/` (БД, мультитенантность, границы сервисов, саги, брокер, идемпотентность API, миграция Oracle → PostgreSQL, секреты, витрина отчётности). Для каждой — решение одиночной модели и решение совета в одинаковом формате, в случайном порядке `A.md` / `B.md`, `checklist.md` для слепой оценки человеком, `key.json` — что есть что и цена (вызовы, токены, секунды).
+## Как пользоваться
 
-## Подключение к хосту
+| Команда в opencode          | Когда                                                     |
+| --------------------------- | --------------------------------------------------------- |
+| `/council <вопрос>`         | открытый вопрос: совет предлагает, критикует, сводит итог |
+| `/council-debate <A vs B>`  | выбор из двух вариантов                                   |
+| `/council-vote <вопрос>`    | быстрое голосование                                       |
+| `/council-review`           | ревью текущего диффа, итог «go» или «no-go»               |
+| `/council-embrace <задача>` | полный цикл: исследование → решение → код → проверка      |
 
-Сервер — тот же файл: `node dist/cli/index.js mcp` (stdio) или `… mcp --http` (Streamable HTTP на 127.0.0.1:8765; для другого адреса нужен `COUNCIL_HTTP_TOKEN`). Логи — только в stderr.
+Пример: `/council Как хранить идемпотентные ключи платёжного API?`
 
-| Хост                           | Что сделать                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| opencode V2                    | блок `mcp.servers.council` из [integrations/opencode/opencode.example.jsonc](integrations/opencode/opencode.example.jsonc); команды `/council`, `/council-debate`, `/council-vote`, `/council-review`, `/council-costs`, `/council-embrace`, `/council-discover`, `/council-define`, `/council-develop`, `/council-deliver`, `/council-status`, `/council-auto`, `/council-setup`, `/council-doctor`, `/council-usage`, `/council-models` — скопировать `integrations/opencode/commands/` в `.opencode/commands/`; агенты `@architect` и `conductor` — `integrations/opencode/agents/` в `.opencode/agents/`; правила вызова — [AGENTS.fragment.md](integrations/opencode/AGENTS.fragment.md) в `AGENTS.md` |
-| DeepSeek Harness               | запись `@deepseek-ai/dsh-mcp-client` из [integrations/dsh/README.md](integrations/dsh/README.md); Skill — `integrations/skills/council/` в `.agents/skills/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Claude Code, Codex, Gemini CLI | обычная запись MCP-сервера (stdio) и Skill из `integrations/skills/council/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| Веб-агент (deepagents)         | `council mcp --http` + langchain-mcp-adapters                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+Можно вызвать агента `@architect`, а можно просто спросить opencode о выборе: он сам предложит
+нужную команду.
 
-Инструменты: `council_deliberate`, `council_workflow`, `council_wait`, `council_cancel`, `council_get_run`, `council_estimate`, `council_info` (и переопределение состава моделей на сессию), `council_doctor`, `council_usage`, `council_route`. Долгий запуск не упирается в таймауты хоста: вызов ждёт итога не дольше `wait_s` (по умолчанию 45 с, `COUNCIL_WAIT_S`) и возвращает прогресс, агент продолжает через `council_wait`. Хосты, которые показывают MCP progress notifications (Claude Code, Gemini CLI), получают их тоже. Отчёт возвращается как `<council-output trust="untrusted">` — данные, а не инструкции.
+## Другие хосты
 
-MCP prompts (`/council:council`, `/council:debate`, `/council:vote`, `/council:review`, `/council:costs`) доступны в хостах, которые их поддерживают. В opencode текст после такой команды делится по пробелам на аргументы, поэтому вопрос нужно брать в кавычки — удобнее файловые команды из `integrations/opencode/commands/`, они принимают весь текст.
+**DeepSeek Harness.** Выполните `node ~/council-mcp/dist/cli/index.js setup --host dsh`.
+Команда выведет блок YAML. Добавьте его в `~/.dsh/cordis.patch.yml` и перезапустите DSH.
+Подробности — в [integrations/dsh/README.md](integrations/dsh/README.md).
 
-## Разработка
+**Claude Code.** Выполните `setup --host claude`. Команда создаст `.mcp.json` и Skill.
 
-```bash
-npm install
-npm run check   # typecheck, lint, format, test
-npm run build   # dist/cli/index.js — один самодостаточный файл
-```
+**Любой MCP-хост.** Укажите команду сервера `node ~/council-mcp/dist/cli/index.js mcp` (stdio).
+Для HTTP добавьте флаг `--http`, сервер будет слушать `127.0.0.1:8765`.
 
-## Конфигурация
+## Безопасность
 
-Обязательные переменные окружения:
+Участники совета только читают проект. Им недоступны `.env*`, ключи и файлы из `.gitignore`.
+Секреты маскируются в промптах, логах и ADR. Совет пишет только в `docs/adr/` и `.council/`.
+Сетевые вызовы идут только на `COUNCIL_BASE_URL`, телеметрии нет.
 
-| Переменная         | Назначение                                               |
-| ------------------ | -------------------------------------------------------- |
-| `COUNCIL_BASE_URL` | OpenAI-совместимый эндпоинт                              |
-| `COUNCIL_API_KEY`  | ключ доступа (только из env)                             |
-| `COUNCIL_MODELS`   | модели через запятую, минимум две (или `models` в файле) |
+## Подробнее
 
-Необязательные: `COUNCIL_WORKSPACE`, `COUNCIL_CONFIG`, `COUNCIL_AGENT` (`auto` / `opencode` / `custom`; `dsh` — в фазе 9), `COUNCIL_QUALITY_THRESHOLD`, `COUNCIL_GUARD` (`on` / `off`), `COUNCIL_AUTO_ROUTER` (`off` / `suggest` / `invoke`), `COUNCIL_LOG_LEVEL`, `COUNCIL_DEBUG=1` (stacktrace внутренних ошибок).
-
-Параметры моделей, умолчания, пути и защищённые файлы — в `council.config.json` в корне проекта, см. [council.config.example.json](council.config.example.json). Секреты в файле запрещены.
-
-```bash
-council setup --host opencode  # подготовить проект
-council doctor  # конфиг, эндпоинт, модели, агент, ripgrep, git, права
-council usage --days 7  # расход по моделям, режимам, персонам, дням
-council route "REST или gRPC?"  # какую команду выбрать
-council info    # итоговая конфигурация (ключ маскируется)
-council run --mode vote -q "REST или gRPC для внутреннего API?" --option REST --option gRPC
-```
-
-Прогресс печатается в stderr, итоговый отчёт — в stdout (`--json` — структурированный результат).
-
-Флаги `council run`: `--panel 3|5|7` (персон больше, чем моделей, — модель играет несколько персон, каждая в своей сессии, и не критикует своих), `--style balanced|adversarial|red-team|executive|implementation` (состав персон и форма итога), `--goal advice|decision|plan|implement|review` (ADR — для decision/plan/implement; план работ — для plan/implement), `--research-first` (шаг исследования перед раундами), `--budget-calls N`, `--budget-tokens N` (прогноз выше лимита — отказ до запуска, `--confirm-budget` — запустить всё равно), `--dry-run` (состав и прогноз без вызовов моделей).
-
-Режимы: `consensus` — открытая задача (предложения, анонимная критика, доработка, синтез); `debate` — два варианта, участники спорят по раундам (`--max-rounds`, по умолчанию 2), судьи ставят баллы по критериям (`--criterion`), `--swap-sides` — второй прогон с обменом сторон (сменился победитель — `tie`); `vote` — быстрое голосование; `review` — red-team-ревью диффа (`--diff-file`), go/no-go: доля pass ≥ порога и нет critical.
-
-Double Diamond (`/council-embrace`, инструмент `council_workflow`): discover (исследование, гейт — кворум) → define (consensus с планом, гейт — score ≥ порога и нет вето; ADR и `PLAN.md` в git worktree с веткой `council/<run_id>`) → develop (код пишет хост-агент в worktree, совет ревьюит дифф, гейт — доля pass ≥ порога) → deliver (red-team, гейт — GO и нет critical). `autonomy`: supervised — подтверждать каждую фазу, semi — останавливаться только на провале гейта, auto — без остановок. Провал гейта: `retry`, `back`, `advance` с `override_reason` (решение человека), `abort`. Состояние — `.council/STATE.md` и `.council/workflows/<id>.json`, переживает перезапуск; индекс решений — `.council/decisions.json`, хэши результатов — `.council/integrity.json`. Отдельно handoff — `handoff: "plan-only"` у consensus.
-
-Гейты: кворум раунда ⌊panel/2⌋ + 1 ответов; вето SRE и безопасности на critical-недостаток решения большинства (не снято доработкой — `vetoed`, ADR со статусом `rejected`); consensus score = доля уверенности большинства − 0,1 за каждый незакрытый major против большинства; гейт — score ≥ `COUNCIL_QUALITY_THRESHOLD` (0,75) и нет вето.
-
-## Артефакты
-
-- `docs/adr/NNNN-<slug>.md` — ADR на основе MADR 4.0: контекст, варианты, решение и обоснование, риски, способ проверки, плюсы и минусы вариантов, особое мнение, открытые вопросы, состав совета (только метки участников). Номер = максимальный + 1, существующие файлы не перезаписываются, статус всегда `proposed`. Индекс `docs/adr/README.md` ведётся, только если создан советом.
-- `.council/runs/<run_id>.jsonl` — транскрипт: каждая попытка каждого участника (модель, роль, хеш промпта, расход, текст агента, разобранный ответ или ошибка). Реальные имена моделей — только здесь. Папка `.council/` сама себя исключает из git (`.council/.gitignore`).
-- Секреты (ключи, токены, пароли, строки подключения, PEM) маскируются во входе до промптов, в транскрипте, отчёте и ADR. Пути из корневого `.gitignore`, `.env*`, ключи и `.council/` участникам читать запрещено.
-
-## E2E
-
-```bash
-COUNCIL_E2E=1 npm run test:e2e
-```
-
-Нужен opencode V2 в PATH. Три сценария с фейковым OpenAI-совместимым провайдером: участники (vote, consensus, песочница), хост (`/council` в opencode → MCP → участники → ADR). Тест с фейковым провайдером проверяет, что opencode принимает конфиг участника и не получает инструментов записи; с заданными `COUNCIL_BASE_URL`/`COUNCIL_API_KEY`/`COUNCIL_MODELS` дополнительно идёт голосование на реальных моделях.
+- [docs/USAGE.md](docs/USAGE.md): режимы, CLI, конфигурация, бюджет, артефакты, плагин opencode,
+  разработка
+- [docs/PLAN.md](docs/PLAN.md): план и решения
