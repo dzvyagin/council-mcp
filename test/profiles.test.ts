@@ -120,6 +120,7 @@ describe("opencodeProfile", () => {
       });
       expect(oc.agents.councillor?.permissions).toEqual(readOnlyRules(true));
       expect(oc.agents[EXPLORE_AGENT]?.mode).toBe("subagent");
+      expect(oc.agents.title).toEqual({ disabled: true });
     } finally {
       delete process.env.SOME_HOST_SECRET;
       await launch.cleanup();

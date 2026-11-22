@@ -142,6 +142,8 @@ describe.runIf(enabled && opencode)("e2e: opencode acp + фейковый про
       await driver.dispose();
     }
 
+    // Служебный агент title отключён: запросов без инструментов (генерация заголовка) нет.
+    expect(provider.requests.filter((q) => (q.tools ?? []).length === 0)).toHaveLength(0);
     const toolNames = new Set(
       provider.requests.flatMap((q) => q.tools?.map((t) => t.function.name) ?? []),
     );

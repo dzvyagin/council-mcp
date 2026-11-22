@@ -150,6 +150,8 @@ export function opencodeConfig(model: ModelConfig, config: CouncilConfig): Recor
           "Участник совета: исследует проект только на чтение и сдаёт ответ инструментом",
         permissions: readOnlyRules(true),
       },
+      // Генерация заголовка сессии — лишний вызов модели на каждого участника.
+      title: { disabled: true },
       [EXPLORE_AGENT]: {
         mode: "subagent",
         description: "Read-only поиск и чтение кода проекта по поручению участника совета",
