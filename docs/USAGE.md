@@ -37,9 +37,16 @@
 
 ## Плагин opencode
 
-Ставится один раз на машину: `opencode plugin add git+https://<git>/council-mcp.git#<тег>`
-(без сети — `npm run release -- --dir <папка>` и `git+file://<папка>`). Точка входа —
-`dist/opencode/plugin.js`. В каждом проекте плагин:
+Ставится один раз на машину: `opencode plugin add git+https://<git>/council-mcp.git` (версия —
+суффиксом `#<тег>`; без сети — `npm run release -- --dir <папка>` и `git+file://<папка>`).
+Как у Claude Octopus, репозиторий сам является пакетом: собранный `dist/` закоммичен, точка
+входа — `dist/opencode/plugin.js`. В `package.json` нет зависимостей (всё в бандлах) и скриптов
+подготовки (`build`, `prepare`, `install` и т. п.): с ними npm внутри opencode пытается собирать
+пакет и падает, поэтому сборка называется `bundle`. Тест сверяет закоммиченный `dist/` со свежей
+сборкой. opencode кэширует git-плагин по строке установки: обновление — `plugin remove`, очистка
+`~/.cache/opencode/npm/git-council-mcp-*` и снова `plugin add`, или установка с новым тегом.
+
+В каждом проекте плагин:
 
 - **Регистрирует MCP-сервер `council`** для папки проекта. Ключи MCP-сервер наследует из
   окружения opencode, в конфиг они не пишутся. После смены переменных —
@@ -168,12 +175,12 @@ npx tsx eval/run.ts --out eval/out
 ```bash
 npm install
 npm run check                    # typecheck, lint, format, test
-npm run build                    # dist/ — самодостаточные файлы
-npm run release -- --tag v0.1.0  # релизный тег: dist и package.json без зависимостей
+npm run bundle                   # dist/ — самодостаточные файлы; закоммитьте вместе с изменениями
+npm run release -- --dir <папка> # копия пакета для передачи без сети
 COUNCIL_E2E=1 npm run test:e2e   # e2e на настоящем opencode V2 с фейковым провайдером
 ```
 
-E2E ставит плагин как пользователь (`release --dir` + `opencode plugin add git+file://`):
+E2E ставит плагин как пользователь: `opencode plugin add git+file://` прямо из репозитория (HEAD, без npm-реестра) и из свежей сборки;
 обычный вопрос без команды → хост сам вызывает совет → ADR; защита путей; состояние в промпте;
 участники в песочнице. Негативные кейсы автозапуска (правки, багфиксы, тесты, объяснения не
 зовут совет) — в `test/plugin-lib.test.ts`.

@@ -23,8 +23,11 @@
 2. Поставьте плагин (один раз на машину):
 
    ```bash
-   opencode plugin add git+https://<ваш git>/council-mcp.git#v0.1.0
+   opencode plugin add git+https://github.com/dzvyagin/council-mcp.git
    ```
+
+   Из внутреннего зеркала — тот же адрес вашего git. Закрепить версию — суффикс тега, например
+   `…council-mcp.git#v0.1.0`.
 
 3. Перезапустите фоновый сервис opencode, чтобы он увидел переменные:
 
@@ -32,8 +35,17 @@
    opencode service restart
    ```
 
-В проекты ничего копировать не нужно: плагин сам подключает совет в любом проекте. npm-реестр
-для установки не нужен.
+В проекты ничего копировать не нужно: плагин сам подключает совет в любом проекте. Репозиторий —
+готовый пакет (собранный `dist/` в нём), поэтому npm-реестр для установки не нужен.
+
+Обновление: opencode кэширует плагин из git и сам его не обновляет. Удалите плагин и кэш, затем
+поставьте снова:
+
+```bash
+opencode plugin remove git+https://github.com/dzvyagin/council-mcp.git
+rm -rf ~/.cache/opencode/npm/git-council-mcp-*
+opencode plugin add git+https://github.com/dzvyagin/council-mcp.git
+```
 
 ## Как пользоваться
 
@@ -69,7 +81,7 @@
 **Любой MCP-хост** — команда сервера `node <council>/dist/cli/index.js mcp` (stdio), флаг `--http`
 включает HTTP на `127.0.0.1:8765`.
 
-`<council>` — папка с собранным council (см. «Выпуск версии»).
+`<council>` — папка с клоном репозитория: собранный `dist/` уже в нём.
 
 ## Безопасность
 
@@ -77,18 +89,10 @@
 Секреты маскируются в промптах, логах и ADR. Ключ берётся только из окружения и не пишется в
 конфиги. Сетевые вызовы идут только на `COUNCIL_BASE_URL`, телеметрии нет.
 
-## Выпуск версии
+## Без доступа к git
 
-Для сопровождающих:
-
-```bash
-npm install && npm run release -- --tag v0.1.0
-git push origin v0.1.0
-```
-
-Тег содержит собранный `dist/` и `package.json` без зависимостей. Без сети:
-`npm run release -- --dir /opt/council`, перенесите папку и выполните
-`opencode plugin add git+file:///opt/council`.
+Перенесите копию пакета папкой: `npm run release -- --dir /opt/council` на машине с репозиторием,
+затем на целевой — `opencode plugin add git+file:///opt/council`.
 
 ## Подробнее
 
