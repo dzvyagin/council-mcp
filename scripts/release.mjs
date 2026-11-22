@@ -9,7 +9,15 @@
 // В релизе package.json без зависимостей и скриптов: бандлы самодостаточны, и `npm install`
 // из git (так ставит opencode) ничего не скачивает из реестра и ничего не собирает.
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,7 +40,9 @@ if (tag && !/^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(tag)) {
 }
 
 const run = (cmd, argv, cwd = root) =>
-  execFileSync(cmd, argv, { cwd, stdio: ["ignore", "pipe", "inherit"] }).toString().trim();
+  execFileSync(cmd, argv, { cwd, stdio: ["ignore", "pipe", "inherit"] })
+    .toString()
+    .trim();
 const git = (argv, cwd = root) => run("git", argv, cwd);
 const commitEnv = ["-c", "user.name=council-release", "-c", "user.email=release@council.local"];
 
