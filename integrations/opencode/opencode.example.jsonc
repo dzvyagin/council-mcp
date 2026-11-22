@@ -1,0 +1,28 @@
+// Пример для opencode V2: подключение совета как локального MCP-сервера.
+// Скопируйте блок "mcp" в opencode.jsonc проекта (или ~/.config/opencode/opencode.jsonc).
+// Секреты — только из окружения: COUNCIL_API_KEY задайте в shell, а не в файле.
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "council": {
+        "type": "local",
+        // Один самодостаточный файл, npm install не нужен (npm run build → dist/cli/index.js).
+        "command": ["node", "/abs/path/council-mcp/dist/cli/index.js", "mcp"],
+        "environment": {
+          "COUNCIL_BASE_URL": "{env:COUNCIL_BASE_URL}",
+          "COUNCIL_API_KEY": "{env:COUNCIL_API_KEY}",
+          "COUNCIL_MODELS": "{env:COUNCIL_MODELS}",
+          "COUNCIL_WORKSPACE": ".",
+          // Участники — те же opencode, запущенные как ACP-агенты в режиме только чтения.
+          "COUNCIL_AGENT": "opencode",
+          // Сколько секунд один вызов ждёт итога, прежде чем вернуть прогресс (opencode
+          // не показывает MCP progress, поэтому прогресс приходит текстом между вызовами).
+          "COUNCIL_WAIT_S": "45",
+        },
+        // Инструменты совета — напрямую в списке модели, без Code Mode.
+        "codemode": false,
+      },
+    },
+  },
+}

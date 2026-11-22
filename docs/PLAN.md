@@ -240,3 +240,17 @@ E2E с настоящим opencode 2.3.2 (фейковый провайдер): 
 - Штраф за major — только за недостатки против предложений большинства.
 - `research_first` — только для consensus.
 - Прогноз токенов без истории — эвристика: агенты сами читают файлы, объём заранее неизвестен; после нескольких реальных запусков прогноз строится по истории.
+
+### Фаза 5 — готово
+
+Сделано: MCP-сервер (`src/mcp`, SDK v2) — инструменты `council_deliberate` (с `dry_run`), `council_wait`, `council_cancel`, `council_get_run` (из памяти или транскрипта — переживает перезапуск), `council_estimate`, `council_info`; `instructions` для системного промпта хоста; MCP prompts `council`, `vote`, `costs`; progress notifications при `progressToken`; асинхронный контракт `wait_s` (по умолчанию 45 с); отчёт как `<council-output trust="untrusted">`; ошибки конфига, входа, бюджета и «агент не найден» — понятным текстом, сервер стартует и без полного конфига. Транспорты: stdio и Streamable HTTP (stateless, loopback по умолчанию, Bearer-токен обязателен вне loopback). Логи — pino в stderr с маскированием. `council mcp` в том же бандле. Интеграции: `integrations/opencode` (конфиг V2, агент `architect`, команды `/council`, `/council-vote`, `/council-costs`, фрагмент AGENTS.md), `integrations/skills/council/SKILL.md`, `integrations/dsh`.
+
+Проверено: e2e с настоящим opencode 2.3.2 как хостом — `/council` (файловая команда) → `council_deliberate` → `council_wait` → участники `opencode acp` → отчёт возвращается хосту, ADR и транскрипт в репозитории; MCP prompts сервера видны в opencode как команды (`council:costs`); stdio на собранном бандле (stdout — только JSON-RPC, логи в stderr, остановка по закрытию stdin, ключ не утекает). Таймауты: вызов не длиннее `wait_s`, поэтому длительность запуска не упирается в лимиты хоста (opencode — 12 ч, DSH — 60 с по умолчанию).
+
+Отклонения:
+
+- opencode делит текст MCP-промпта по пробелам на аргументы: вопрос без кавычек обрезается до первого слова. Основной путь в opencode — файловые команды (`$ARGUMENTS`), MCP prompts — для хостов, где они передают текст целиком, или с кавычками.
+- В opencode `opencode run` не разбирает слэш-команды (только TUI и ACP-клиенты); e2e ведёт хост через ACP.
+- Имена инструментов — `council_*` по контракту; в opencode они видны как `council_council_*` (префикс сервера).
+- Код в Code Mode не проверялся: в примере конфига `codemode: false`.
+- Добавлена зависимость `pino` (из согласованного стека) и баннер `createRequire` в бандле (pino — CommonJS).

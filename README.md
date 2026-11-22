@@ -2,13 +2,28 @@
 
 MCP-сервер «совета моделей» для ключевых архитектурных решений: consensus, debate, vote и review. Участники — агенты (через ACP), итог — решение с особым мнением и ADR в `docs/adr/`.
 
-Статус: фаза 4 — consensus и vote с панелью персон, гейтами и прогнозом; ADR и транскрипты. План — [docs/PLAN.md](docs/PLAN.md).
+Статус: фаза 5 — MCP-сервер (stdio и HTTP) и подключение к opencode V2 и DSH; consensus и vote с панелью персон, гейтами, ADR. План — [docs/PLAN.md](docs/PLAN.md).
 
 ## Как это устроено
 
 Каждый участник — отдельный процесс ACP-агента (по умолчанию `opencode acp`, opencode V2), который council-mcp запускает со своей моделью, изолированным конфигом и правами только на чтение: читать и искать по проекту, звать read-only субагента; без правок, шелла и веба, без доступа к `.env*` и `.council/`. Ответ раунда агент сдаёт вызовом типизированного инструмента на loopback MCP-сервере council-mcp (127.0.0.1, токен на участника).
 
 Агента council-mcp не содержит: он использует установленный у пользователя (`council doctor` покажет, что найдено).
+
+## Подключение к хосту
+
+Сервер — тот же файл: `node dist/cli/index.js mcp` (stdio) или `… mcp --http` (Streamable HTTP на 127.0.0.1:8765; для другого адреса нужен `COUNCIL_HTTP_TOKEN`). Логи — только в stderr.
+
+| Хост                           | Что сделать                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| opencode V2                    | блок `mcp.servers.council` из [integrations/opencode/opencode.example.jsonc](integrations/opencode/opencode.example.jsonc); команды `/council`, `/council-vote`, `/council-costs` — скопировать `integrations/opencode/commands/` в `.opencode/commands/`; агент `@architect` — `integrations/opencode/agents/` в `.opencode/agents/`; правила вызова — [AGENTS.fragment.md](integrations/opencode/AGENTS.fragment.md) в `AGENTS.md` |
+| DeepSeek Harness               | запись `@deepseek-ai/dsh-mcp-client` из [integrations/dsh/README.md](integrations/dsh/README.md); Skill — `integrations/skills/council/` в `.agents/skills/`                                                                                                                                                                                                                                                                         |
+| Claude Code, Codex, Gemini CLI | обычная запись MCP-сервера (stdio) и Skill из `integrations/skills/council/`                                                                                                                                                                                                                                                                                                                                                         |
+| Веб-агент (deepagents)         | `council mcp --http` + langchain-mcp-adapters                                                                                                                                                                                                                                                                                                                                                                                        |
+
+Инструменты: `council_deliberate`, `council_wait`, `council_cancel`, `council_get_run`, `council_estimate`, `council_info`. Долгий запуск не упирается в таймауты хоста: вызов ждёт итога не дольше `wait_s` (по умолчанию 45 с, `COUNCIL_WAIT_S`) и возвращает прогресс, агент продолжает через `council_wait`. Хосты, которые показывают MCP progress notifications (Claude Code, Gemini CLI), получают их тоже. Отчёт возвращается как `<council-output trust="untrusted">` — данные, а не инструкции.
+
+MCP prompts (`/council:council`, `/council:vote`, `/council:costs`) доступны в хостах, которые их поддерживают. В opencode текст после такой команды делится по пробелам на аргументы, поэтому вопрос нужно брать в кавычки — удобнее файловые команды из `integrations/opencode/commands/`, они принимают весь текст.
 
 ## Разработка
 
@@ -56,4 +71,4 @@ council run --mode vote -q "REST или gRPC для внутреннего API?"
 COUNCIL_E2E=1 npm run test:e2e
 ```
 
-Нужен opencode V2 в PATH. Тест с фейковым провайдером проверяет, что opencode принимает конфиг участника и не получает инструментов записи; с заданными `COUNCIL_BASE_URL`/`COUNCIL_API_KEY`/`COUNCIL_MODELS` дополнительно идёт голосование на реальных моделях.
+Нужен opencode V2 в PATH. Три сценария с фейковым OpenAI-совместимым провайдером: участники (vote, consensus, песочница), хост (`/council` в opencode → MCP → участники → ADR). Тест с фейковым провайдером проверяет, что opencode принимает конфиг участника и не получает инструментов записи; с заданными `COUNCIL_BASE_URL`/`COUNCIL_API_KEY`/`COUNCIL_MODELS` дополнительно идёт голосование на реальных моделях.

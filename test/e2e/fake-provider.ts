@@ -125,7 +125,11 @@ export function fakeProvider(defaults: { vote?: unknown } = {}) {
             {
               ...base,
               choices: [
-                { index: 0, delta: { role: "assistant", content: "Готово." }, finish_reason: null },
+                {
+                  index: 0,
+                  delta: { role: "assistant", content: hostReply(chat) ?? "Готово." },
+                  finish_reason: null,
+                },
               ],
             },
             { ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
@@ -153,6 +157,8 @@ function nextCall(
     .flatMap((m) => m.tool_calls ?? [])
     .map((c) => c.function.name);
   const isParticipant = names.some((n) => n.startsWith("council_submit_"));
+  const isHost = names.includes("council_council_deliberate");
+  if (isHost) return hostCall(chat, lastUser);
   const args = (o: unknown) => JSON.stringify(o);
 
   if (!isParticipant) {
@@ -189,4 +195,42 @@ export function toolResults(requests: ChatRequest[]): string[] {
   return requests.flatMap((r) =>
     r.messages.filter((m) => m.role === "tool").map((m) => text(m.content)),
   );
+}
+
+/**
+ * Хост-агент opencode: на команду /council вызывает council_deliberate (короткий wait_s, чтобы
+ * проверить council_wait), пока идёт прогресс — council_wait, затем отвечает текстом отчёта.
+ */
+function hostCall(
+  chat: ChatRequest,
+  lastUser: number,
+): { name: string; arguments: string } | undefined {
+  const after = chat.messages.slice(lastUser + 1);
+  const lastTool = [...after].reverse().find((m) => m.role === "tool");
+  if (!lastTool) {
+    return {
+      name: "council_council_deliberate",
+      arguments: JSON.stringify({
+        question: "Как партиционировать таблицу платежей?",
+        mode: "consensus",
+        context: { notes: "PostgreSQL 16", files: ["README.md"] },
+        wait_s: 1,
+      }),
+    };
+  }
+  const result = text(lastTool.content);
+  const runId = /council_wait с run_id="([^"]+)"/.exec(result)?.[1];
+  if (runId)
+    return {
+      name: "council_council_wait",
+      arguments: JSON.stringify({ run_id: runId, wait_s: 2 }),
+    };
+  return undefined; // итог получен — ответить текстом
+}
+
+/** Текст ответа хоста: отчёт из последнего результата council_* (как просит инструкция). */
+export function hostReply(chat: ChatRequest): string | undefined {
+  const tool = [...chat.messages].reverse().find((m) => m.role === "tool");
+  const out = /<council-output[^>]*>\n([\s\S]*?)\n<\/council-output>/.exec(text(tool?.content));
+  return out?.[1];
 }
