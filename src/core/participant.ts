@@ -45,6 +45,8 @@ export interface AskRequest<T> {
   validate?: (value: T) => string | undefined;
   timeoutS: number;
   signal?: AbortSignal;
+  /** Участник выполнил действие (вызов инструмента) — для живого прогресса. */
+  onActivity?: (title: string) => void;
 }
 
 export type ParticipantErrorKind =

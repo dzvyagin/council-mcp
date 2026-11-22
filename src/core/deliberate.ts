@@ -143,8 +143,9 @@ export function validate(input: DeliberateInput): void {
       throw new InputError("options: нужно минимум два разных варианта");
     }
   }
-  if (input.maxRounds !== undefined && (input.maxRounds < 0 || input.maxRounds > 5)) {
-    throw new InputError("max_rounds: от 0 до 5");
+  // Без раундов совет не обсуждает, а только собирает отдельные мнения — не допускаем.
+  if (input.maxRounds !== undefined && (input.maxRounds < 1 || input.maxRounds > 5)) {
+    throw new InputError("max_rounds: от 1 до 5");
   }
   if (input.maxBytes !== undefined && input.maxBytes < 1_000) {
     throw new InputError("context.max_bytes: не меньше 1000");
@@ -622,7 +623,8 @@ export async function deliberate(
     const warnings = [...p.warnings];
     if (signal.aborted) {
       status = "partial";
-      warnings.unshift("запуск отменён — итог по уже полученным ответам");
+      const why = signal.reason instanceof Error ? signal.reason.message : "запуск отменён";
+      warnings.unshift(`${why} — итог по уже полученным ответам`);
     }
     const passed =
       (p.passed ?? true) &&

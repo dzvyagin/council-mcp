@@ -133,6 +133,8 @@ export class CouncilSession {
     round: string,
     build: (seat: Seat) => Omit<AskRequest<T>, "round" | "timeoutS" | "signal">,
     only?: (seat: Seat) => boolean,
+    /** Необязательный раунд (исследование): без ретраев, неответивший участник не выбывает. */
+    optional = false,
   ): Promise<RoundAnswers<T>> {
     const seats = this.activeSeats.filter((s) => only?.(s) ?? true);
     this.options.emit({ type: "round_started", round, aliases: seats.map((s) => s.alias) });
@@ -140,7 +142,7 @@ export class CouncilSession {
     await Promise.all(
       seats.map((seat) =>
         this.limiterFor(seat)(async () => {
-          const value = await this.askSeat(round, seat, build(seat));
+          const value = await this.askSeat(round, seat, build(seat), optional);
           if (value !== undefined) answers.set(seat.alias, value.value);
         }),
       ),
@@ -175,6 +177,7 @@ export class CouncilSession {
     round: string,
     seat: Seat,
     request: Omit<AskRequest<T>, "round" | "timeoutS" | "signal">,
+    optional = false,
   ): Promise<{ value: T } | undefined> {
     const { emit, signal } = this.options;
     for (let attempt = 0; ; attempt++) {
@@ -187,6 +190,9 @@ export class CouncilSession {
           round,
           timeoutS: this.options.roundTimeoutS,
           signal,
+          onActivity: (title) => {
+            emit({ type: "participant_activity", round, alias: seat.alias, title });
+          },
         });
         seat.usage = addUsage(seat.usage, result.usage);
         this.options.record?.({
@@ -230,6 +236,11 @@ export class CouncilSession {
         await this.dropParticipant(seat);
       }
 
+      if (optional) {
+        seat.note = `пропустил необязательный раунд ${round}: ${reason}`;
+        emit({ type: "participant_failed", round, alias: seat.alias, reason });
+        return undefined;
+      }
       if (attempt >= this.retries) {
         seat.state = "failed";
         seat.note = reason;

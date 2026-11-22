@@ -136,14 +136,17 @@ export class JobRunner<R> {
   cancel(runId: string): boolean {
     const job = this.jobs.get(runId);
     if (job?.status !== "running") return false;
-    job.controller.abort(new Error("запуск отменён"));
+    job.controller.abort(new Error("запуск отменён вызовом council_cancel"));
     return true;
   }
 
   /** Отменить все запуски и дождаться их завершения (остановка сервера). */
   async shutdown(): Promise<void> {
     for (const job of this.jobs.values()) {
-      if (job.status === "running") job.controller.abort(new Error("сервер остановлен"));
+      if (job.status === "running")
+        job.controller.abort(
+          new Error("MCP-сервер совета остановлен хостом (перезапуск или закрытие opencode)"),
+        );
     }
     await Promise.all([...this.jobs.values()].map((j) => j.done));
   }

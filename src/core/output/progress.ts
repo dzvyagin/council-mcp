@@ -3,7 +3,7 @@ import { formatDuration, markerFor } from "./format.js";
 
 type SeatState =
   | { kind: "waiting" }
-  | { kind: "running"; since: number }
+  | { kind: "running"; since: number; actions: number; last?: string }
   | { kind: "done"; durationMs: number }
   | { kind: "retry"; reason: string; since: number }
   | { kind: "failed"; reason: string };
@@ -40,11 +40,18 @@ export class ProgressTracker {
         break;
       case "round_started":
         this.round = event.round;
-        for (const alias of event.aliases) this.seats.set(alias, { kind: "running", since: t });
+        for (const alias of event.aliases)
+          this.seats.set(alias, { kind: "running", since: t, actions: 0 });
         break;
       case "participant_done":
         this.seats.set(event.alias, { kind: "done", durationMs: event.durationMs });
         break;
+      case "participant_activity": {
+        const s = this.seats.get(event.alias);
+        if (s?.kind === "running")
+          this.seats.set(event.alias, { ...s, actions: s.actions + 1, last: event.title });
+        break;
+      }
       case "participant_retry":
         this.seats.set(event.alias, { kind: "retry", reason: event.reason, since: t });
         break;
@@ -85,7 +92,9 @@ function describeSeat(s: SeatState, t: number): string {
     case "waiting":
       return "·";
     case "running":
-      return `… ${formatDuration(t - s.since)}`;
+      return s.actions > 0
+        ? `… ${formatDuration(t - s.since)}, действий ${String(s.actions)} (${shorten(s.last ?? "")})`
+        : `… ${formatDuration(t - s.since)}`;
     case "done":
       return `✓ ${formatDuration(s.durationMs)}`;
     case "retry":
@@ -93,4 +102,9 @@ function describeSeat(s: SeatState, t: number): string {
     case "failed":
       return `✗ ${s.reason}`;
   }
+}
+
+function shorten(title: string): string {
+  const one = title.replace(/\s+/g, " ").trim();
+  return one.length > 40 ? `${one.slice(0, 39)}…` : one;
 }

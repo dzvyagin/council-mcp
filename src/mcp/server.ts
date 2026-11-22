@@ -83,7 +83,15 @@ const runInput = {
     .optional()
     .describe("debate: критерии судьи"),
   swap_sides: z.boolean().optional().describe("debate: второй прогон с обменом сторон"),
-  max_rounds: z.number().int().min(0).max(5).optional(),
+  max_rounds: z
+    .number()
+    .int()
+    .min(1)
+    .max(5)
+    .optional()
+    .describe(
+      "consensus: раунды критики и доработки; debate: раунды спора. Обычно не задавай (по умолчанию 2): без раундов совет не обсуждает, а только собирает отдельные мнения",
+    ),
   budget: z
     .object({
       max_calls: z.number().int().positive().optional(),
@@ -170,7 +178,7 @@ export function snapshotResult(s: JobSnapshot<DeliberationResult>): CallToolResu
       content: [
         {
           type: "text",
-          text: `${s.progress}\n\nСовет ещё работает. Покажи пользователю строку прогресса и вызови council_wait с run_id="${s.runId}".`,
+          text: `${s.progress}\n\nСовет ещё работает: участники сами изучают проект, раунд может идти до 15 минут — это нормально. Покажи пользователю строку прогресса и вызови council_wait с run_id="${s.runId}". Не вызывай council_cancel, если об этом не просил пользователь.`,
         },
       ],
       structuredContent: { run_id: s.runId, status: "running", progress: s.progress },

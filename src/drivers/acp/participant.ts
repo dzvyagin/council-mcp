@@ -46,6 +46,7 @@ const STDERR_TAIL = 4_000;
 export class AcpParticipant implements Participant {
   readonly alias: string;
   private transcript = "";
+  private onActivity: ((title: string) => void) | undefined;
   private stderrTail = "";
   private exited: string | undefined;
   private closed = false;
@@ -186,6 +187,7 @@ export class AcpParticipant implements Participant {
     const started = Date.now();
     const usage: Usage = emptyUsage();
     this.transcript = "";
+    this.onActivity = request.onActivity;
     const finish = (
       r: { ok: true; value: T } | { ok: false; error: ParticipantError },
     ): AskResult<T> => ({
@@ -339,6 +341,7 @@ export class AcpParticipant implements Participant {
           this.append(update.content.text);
         } else if (update.sessionUpdate === "tool_call") {
           this.append(`\n[tool] ${update.title}\n`);
+          this.onActivity?.(update.title);
         }
       }
     } catch {

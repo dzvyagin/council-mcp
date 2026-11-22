@@ -262,6 +262,8 @@ function progressPrinter(io: CliIO): (event: CouncilEvent) => void {
           `   ${markerFor(event.alias)} ${event.alias} ✓ ${formatDuration(event.durationMs)}\n`,
         );
         break;
+      case "participant_activity":
+        break;
       case "participant_retry":
         io.stderr(`   ${markerFor(event.alias)} ${event.alias} ⚠ ретрай (${event.reason})\n`);
         break;

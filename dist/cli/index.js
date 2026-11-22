@@ -45645,6 +45645,7 @@ var AcpParticipant = class _AcpParticipant {
   token;
   alias;
   transcript = "";
+  onActivity;
   stderrTail = "";
   exited;
   closed = false;
@@ -45758,6 +45759,7 @@ ${stderrTail.trim().split("\n").slice(-5).join("\n")}` : "";
     const started = Date.now();
     const usage2 = emptyUsage();
     this.transcript = "";
+    this.onActivity = request.onActivity;
     const finish = (r) => ({
       ...r,
       usage: usage2,
@@ -45886,6 +45888,7 @@ ${stderrTail.trim().split("\n").slice(-5).join("\n")}` : "";
           this.append(`
 [tool] ${update.title}
 `);
+          this.onActivity?.(update.title);
         }
       }
     } catch {
@@ -46624,14 +46627,14 @@ var CouncilSession = class {
     }));
   }
   /** Задаёт вопрос работающим местам (или подмножеству); возвращает валидные ответы по меткам. */
-  async askAll(round, build2, only) {
+  async askAll(round, build2, only, optional2 = false) {
     const seats = this.activeSeats.filter((s) => only?.(s) ?? true);
     this.options.emit({ type: "round_started", round, aliases: seats.map((s) => s.alias) });
     const answers = /* @__PURE__ */ new Map();
     await Promise.all(
       seats.map(
         (seat2) => this.limiterFor(seat2)(async () => {
-          const value = await this.askSeat(round, seat2, build2(seat2));
+          const value = await this.askSeat(round, seat2, build2(seat2), optional2);
           if (value !== void 0) answers.set(seat2.alias, value.value);
         })
       )
@@ -46658,7 +46661,7 @@ var CouncilSession = class {
     );
     return seat2.participant;
   }
-  async askSeat(round, seat2, request) {
+  async askSeat(round, seat2, request, optional2 = false) {
     const { emit, signal } = this.options;
     for (let attempt = 0; ; attempt++) {
       if (signal.aborted) return void 0;
@@ -46669,7 +46672,10 @@ var CouncilSession = class {
           ...request,
           round,
           timeoutS: this.options.roundTimeoutS,
-          signal
+          signal,
+          onActivity: (title) => {
+            emit({ type: "participant_activity", round, alias: seat2.alias, title });
+          }
         });
         seat2.usage = addUsage(seat2.usage, result.usage);
         this.options.record?.({
@@ -46708,6 +46714,11 @@ var CouncilSession = class {
           error: { kind: "agent_error", message: reason }
         });
         await this.dropParticipant(seat2);
+      }
+      if (optional2) {
+        seat2.note = `\u043F\u0440\u043E\u043F\u0443\u0441\u0442\u0438\u043B \u043D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u044B\u0439 \u0440\u0430\u0443\u043D\u0434 ${round}: ${reason}`;
+        emit({ type: "participant_failed", round, alias: seat2.alias, reason });
+        return void 0;
       }
       if (attempt >= this.retries) {
         seat2.state = "failed";
@@ -48356,14 +48367,22 @@ async function runConsensus(session, input2, options) {
     return false;
   };
   if (input2.researchFirst) {
-    research = await session.askAll("research", (seat2) => ({
-      role: roleOf.get(seat2.alias) ?? "",
-      tool: TOOLS.research,
-      prompt: researchPrompt(common(seat2), TOOLS.research.name)
-    }));
-    if (!quorumOk("research", research))
-      return base(research.size === 0 ? "failed" : "quorum_failed", /* @__PURE__ */ new Map());
-    context.push(researchBlock(research));
+    research = await session.askAll(
+      "research",
+      (seat2) => ({
+        role: roleOf.get(seat2.alias) ?? "",
+        tool: TOOLS.research,
+        prompt: researchPrompt(common(seat2), TOOLS.research.name)
+      }),
+      void 0,
+      true
+    );
+    if (research.size < needed) {
+      warnings.push(
+        `\u0438\u0441\u0441\u043B\u0435\u0434\u043E\u0432\u0430\u043D\u0438\u0435 \u043D\u0435\u043F\u043E\u043B\u043D\u043E\u0435: \u043E\u0442\u0432\u0435\u0442\u0438\u043B\u0438 ${String(research.size)} \u0438\u0437 ${String(session.seats.length)} \u2014 \u0441\u043E\u0432\u0435\u0442 \u043F\u0440\u043E\u0434\u043E\u043B\u0436\u0430\u0435\u0442 \u0431\u0435\u0437 \u043D\u0435\u0433\u043E`
+      );
+    }
+    if (research.size > 0) context.push(researchBlock(research));
   }
   let current = await session.askAll("propose", (seat2) => ({
     role: roleOf.get(seat2.alias) ?? "",
@@ -48752,8 +48771,8 @@ function validate2(input2) {
       throw new InputError("options: \u043D\u0443\u0436\u043D\u043E \u043C\u0438\u043D\u0438\u043C\u0443\u043C \u0434\u0432\u0430 \u0440\u0430\u0437\u043D\u044B\u0445 \u0432\u0430\u0440\u0438\u0430\u043D\u0442\u0430");
     }
   }
-  if (input2.maxRounds !== void 0 && (input2.maxRounds < 0 || input2.maxRounds > 5)) {
-    throw new InputError("max_rounds: \u043E\u0442 0 \u0434\u043E 5");
+  if (input2.maxRounds !== void 0 && (input2.maxRounds < 1 || input2.maxRounds > 5)) {
+    throw new InputError("max_rounds: \u043E\u0442 1 \u0434\u043E 5");
   }
   if (input2.maxBytes !== void 0 && input2.maxBytes < 1e3) {
     throw new InputError("context.max_bytes: \u043D\u0435 \u043C\u0435\u043D\u044C\u0448\u0435 1000");
@@ -49130,7 +49149,8 @@ async function deliberate(input2, deps) {
     const warnings = [...p.warnings];
     if (signal.aborted) {
       status = "partial";
-      warnings.unshift("\u0437\u0430\u043F\u0443\u0441\u043A \u043E\u0442\u043C\u0435\u043D\u0451\u043D \u2014 \u0438\u0442\u043E\u0433 \u043F\u043E \u0443\u0436\u0435 \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u043D\u044B\u043C \u043E\u0442\u0432\u0435\u0442\u0430\u043C");
+      const why = signal.reason instanceof Error ? signal.reason.message : "\u0437\u0430\u043F\u0443\u0441\u043A \u043E\u0442\u043C\u0435\u043D\u0451\u043D";
+      warnings.unshift(`${why} \u2014 \u0438\u0442\u043E\u0433 \u043F\u043E \u0443\u0436\u0435 \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u043D\u044B\u043C \u043E\u0442\u0432\u0435\u0442\u0430\u043C`);
     }
     const passed = (p.passed ?? true) && (status === "converged" || status === "majority") && p.score >= p.threshold && p.veto === void 0;
     const score = Math.round(p.score * 100) / 100;
@@ -49810,11 +49830,18 @@ var ProgressTracker = class {
         break;
       case "round_started":
         this.round = event.round;
-        for (const alias of event.aliases) this.seats.set(alias, { kind: "running", since: t });
+        for (const alias of event.aliases)
+          this.seats.set(alias, { kind: "running", since: t, actions: 0 });
         break;
       case "participant_done":
         this.seats.set(event.alias, { kind: "done", durationMs: event.durationMs });
         break;
+      case "participant_activity": {
+        const s = this.seats.get(event.alias);
+        if (s?.kind === "running")
+          this.seats.set(event.alias, { ...s, actions: s.actions + 1, last: event.title });
+        break;
+      }
       case "participant_retry":
         this.seats.set(event.alias, { kind: "retry", reason: event.reason, since: t });
         break;
@@ -49851,7 +49878,7 @@ function describeSeat(s, t) {
     case "waiting":
       return "\xB7";
     case "running":
-      return `\u2026 ${formatDuration(t - s.since)}`;
+      return s.actions > 0 ? `\u2026 ${formatDuration(t - s.since)}, \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0439 ${String(s.actions)} (${shorten(s.last ?? "")})` : `\u2026 ${formatDuration(t - s.since)}`;
     case "done":
       return `\u2713 ${formatDuration(s.durationMs)}`;
     case "retry":
@@ -49859,6 +49886,10 @@ function describeSeat(s, t) {
     case "failed":
       return `\u2717 ${s.reason}`;
   }
+}
+function shorten(title) {
+  const one = title.replace(/\s+/g, " ").trim();
+  return one.length > 40 ? `${one.slice(0, 39)}\u2026` : one;
 }
 
 // src/core/jobs.ts
@@ -49941,13 +49972,16 @@ var JobRunner = class {
   cancel(runId) {
     const job = this.jobs.get(runId);
     if (job?.status !== "running") return false;
-    job.controller.abort(new Error("\u0437\u0430\u043F\u0443\u0441\u043A \u043E\u0442\u043C\u0435\u043D\u0451\u043D"));
+    job.controller.abort(new Error("\u0437\u0430\u043F\u0443\u0441\u043A \u043E\u0442\u043C\u0435\u043D\u0451\u043D \u0432\u044B\u0437\u043E\u0432\u043E\u043C council_cancel"));
     return true;
   }
   /** Отменить все запуски и дождаться их завершения (остановка сервера). */
   async shutdown() {
     for (const job of this.jobs.values()) {
-      if (job.status === "running") job.controller.abort(new Error("\u0441\u0435\u0440\u0432\u0435\u0440 \u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D"));
+      if (job.status === "running")
+        job.controller.abort(
+          new Error("MCP-\u0441\u0435\u0440\u0432\u0435\u0440 \u0441\u043E\u0432\u0435\u0442\u0430 \u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D \u0445\u043E\u0441\u0442\u043E\u043C (\u043F\u0435\u0440\u0435\u0437\u0430\u043F\u0443\u0441\u043A \u0438\u043B\u0438 \u0437\u0430\u043A\u0440\u044B\u0442\u0438\u0435 opencode)")
+        );
     }
     await Promise.all([...this.jobs.values()].map((j) => j.done));
   }
@@ -50179,6 +50213,8 @@ function progressPrinter(io) {
           `   ${markerFor(event.alias)} ${event.alias} \u2713 ${formatDuration(event.durationMs)}
 `
         );
+        break;
+      case "participant_activity":
         break;
       case "participant_retry":
         io.stderr(`   ${markerFor(event.alias)} ${event.alias} \u26A0 \u0440\u0435\u0442\u0440\u0430\u0439 (${event.reason})
@@ -51025,7 +51061,9 @@ var runInput = {
   options: external_exports.array(external_exports.string().min(1).max(500)).max(10).optional().describe("\u0412\u0430\u0440\u0438\u0430\u043D\u0442\u044B: \u0434\u043B\u044F vote \u2014 2\u201310, \u0434\u043B\u044F debate \u2014 \u0440\u043E\u0432\u043D\u043E 2 (\u0438\u043B\u0438 \u043D\u0435 \u043F\u0435\u0440\u0435\u0434\u0430\u0432\u0430\u0442\u044C)"),
   criteria: external_exports.array(external_exports.string().min(1).max(100)).max(10).optional().describe("debate: \u043A\u0440\u0438\u0442\u0435\u0440\u0438\u0438 \u0441\u0443\u0434\u044C\u0438"),
   swap_sides: external_exports.boolean().optional().describe("debate: \u0432\u0442\u043E\u0440\u043E\u0439 \u043F\u0440\u043E\u0433\u043E\u043D \u0441 \u043E\u0431\u043C\u0435\u043D\u043E\u043C \u0441\u0442\u043E\u0440\u043E\u043D"),
-  max_rounds: external_exports.number().int().min(0).max(5).optional(),
+  max_rounds: external_exports.number().int().min(1).max(5).optional().describe(
+    "consensus: \u0440\u0430\u0443\u043D\u0434\u044B \u043A\u0440\u0438\u0442\u0438\u043A\u0438 \u0438 \u0434\u043E\u0440\u0430\u0431\u043E\u0442\u043A\u0438; debate: \u0440\u0430\u0443\u043D\u0434\u044B \u0441\u043F\u043E\u0440\u0430. \u041E\u0431\u044B\u0447\u043D\u043E \u043D\u0435 \u0437\u0430\u0434\u0430\u0432\u0430\u0439 (\u043F\u043E \u0443\u043C\u043E\u043B\u0447\u0430\u043D\u0438\u044E 2): \u0431\u0435\u0437 \u0440\u0430\u0443\u043D\u0434\u043E\u0432 \u0441\u043E\u0432\u0435\u0442 \u043D\u0435 \u043E\u0431\u0441\u0443\u0436\u0434\u0430\u0435\u0442, \u0430 \u0442\u043E\u043B\u044C\u043A\u043E \u0441\u043E\u0431\u0438\u0440\u0430\u0435\u0442 \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u044B\u0435 \u043C\u043D\u0435\u043D\u0438\u044F"
+  ),
   budget: external_exports.object({
     max_calls: external_exports.number().int().positive().optional(),
     max_tokens: external_exports.number().int().positive().optional(),
@@ -51098,7 +51136,7 @@ function snapshotResult(s) {
           type: "text",
           text: `${s.progress}
 
-\u0421\u043E\u0432\u0435\u0442 \u0435\u0449\u0451 \u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442. \u041F\u043E\u043A\u0430\u0436\u0438 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044E \u0441\u0442\u0440\u043E\u043A\u0443 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441\u0430 \u0438 \u0432\u044B\u0437\u043E\u0432\u0438 council_wait \u0441 run_id="${s.runId}".`
+\u0421\u043E\u0432\u0435\u0442 \u0435\u0449\u0451 \u0440\u0430\u0431\u043E\u0442\u0430\u0435\u0442: \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0438 \u0441\u0430\u043C\u0438 \u0438\u0437\u0443\u0447\u0430\u044E\u0442 \u043F\u0440\u043E\u0435\u043A\u0442, \u0440\u0430\u0443\u043D\u0434 \u043C\u043E\u0436\u0435\u0442 \u0438\u0434\u0442\u0438 \u0434\u043E 15 \u043C\u0438\u043D\u0443\u0442 \u2014 \u044D\u0442\u043E \u043D\u043E\u0440\u043C\u0430\u043B\u044C\u043D\u043E. \u041F\u043E\u043A\u0430\u0436\u0438 \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044E \u0441\u0442\u0440\u043E\u043A\u0443 \u043F\u0440\u043E\u0433\u0440\u0435\u0441\u0441\u0430 \u0438 \u0432\u044B\u0437\u043E\u0432\u0438 council_wait \u0441 run_id="${s.runId}". \u041D\u0435 \u0432\u044B\u0437\u044B\u0432\u0430\u0439 council_cancel, \u0435\u0441\u043B\u0438 \u043E\u0431 \u044D\u0442\u043E\u043C \u043D\u0435 \u043F\u0440\u043E\u0441\u0438\u043B \u043F\u043E\u043B\u044C\u0437\u043E\u0432\u0430\u0442\u0435\u043B\u044C.`
         }
       ],
       structuredContent: { run_id: s.runId, status: "running", progress: s.progress }

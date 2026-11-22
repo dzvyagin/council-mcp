@@ -185,6 +185,21 @@ describe("consensus: панель, вето, кворум, goal", () => {
     expect(propose.prompt).toContain("таблица payments 2 млрд строк (db/schema.sql:12)");
   });
 
+  it("research_first без кворума: совет продолжает без исследования, а не обрывается", async () => {
+    // research в скрипте по умолчанию — no_answer у всех.
+    const driver = new FakeDriver(script(Object.fromEntries(MODELS.map((m) => [m, same(X)]))));
+    const r = await run(driver, { researchFirst: true });
+    expect(r.status).toBe("converged");
+    expect(r.warnings.join("\n")).toMatch(/исследование неполное: ответили 0 из 3/);
+    expect(driver.prompts.some((p) => p.round === "critique-1")).toBe(true);
+  });
+
+  it("max_rounds 0 запрещён: без раундов совет не обсуждает", async () => {
+    await expect(run(new FakeDriver({}), { maxRounds: 0 })).rejects.toThrow(
+      /max_rounds: от 1 до 5/,
+    );
+  });
+
   it("goal plan требует план в синтезе и пишет его в ADR; goal advice — без ADR", async () => {
     const withPlan: FakeReply = {
       value: {

@@ -229,14 +229,23 @@ export async function runConsensus(
 
   // Исследование (research_first): его итог добавляется в общий контекст всех раундов.
   if (input.researchFirst) {
-    research = await session.askAll("research", (seat) => ({
-      role: roleOf.get(seat.alias) ?? "",
-      tool: TOOLS.research,
-      prompt: researchPrompt(common(seat), TOOLS.research.name),
-    }));
-    if (!quorumOk("research", research))
-      return base(research.size === 0 ? "failed" : "quorum_failed", new Map());
-    context.push(researchBlock(research));
+    research = await session.askAll(
+      "research",
+      (seat) => ({
+        role: roleOf.get(seat.alias) ?? "",
+        tool: TOOLS.research,
+        prompt: researchPrompt(common(seat), TOOLS.research.name),
+      }),
+      undefined,
+      true,
+    );
+    // Исследование — вспомогательный шаг: без кворума совет продолжает по тому, что есть.
+    if (research.size < needed) {
+      warnings.push(
+        `исследование неполное: ответили ${String(research.size)} из ${String(session.seats.length)} — совет продолжает без него`,
+      );
+    }
+    if (research.size > 0) context.push(researchBlock(research));
   }
 
   // Раунд 1 — независимые предложения.
