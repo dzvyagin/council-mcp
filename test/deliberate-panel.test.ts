@@ -282,10 +282,36 @@ describe("прогноз и бюджет", () => {
       deliberate(input, { config, driver, runId: "r1", artifacts: false }),
     ).rejects.toBeInstanceOf(BudgetError);
     expect(driver.prompts).toHaveLength(0);
-    const ok = await deliberate(
+    // Подтверждение снимает отказ по прогнозу, но лимит остаётся жёстким: после предложений
+    // (3 вызова ≥ 5? нет) и критики (6 ≥ 5) — стоп, доработки нет, синтез по имеющемуся.
+    const capped = await deliberate(
       { ...input, confirmBudget: true },
       { config, driver, runId: "r2", artifacts: false },
     );
-    expect(ok.status).toBe("converged");
+    expect(capped.status).toBe("partial");
+    expect(capped.gate.passed).toBe(false);
+    expect(capped.decision).not.toBe("");
+    expect(capped.warnings.some((w) => w.startsWith("бюджет исчерпан (вызовов 6 из 5)"))).toBe(
+      true,
+    );
+    expect(driver.prompts.some((p) => p.round === "revise-1")).toBe(false);
+    expect(driver.prompts.some((p) => p.round === "synthesize")).toBe(true);
+  });
+
+  it("превышение бюджета даёт partial с ADR", async () => {
+    const driver = new FakeDriver(script(Object.fromEntries(MODELS.map((m) => [m, same(X)]))));
+    const r = await deliberate(
+      {
+        mode: "consensus",
+        question: "Бюджетный вопрос",
+        budget: { maxCalls: 3 },
+        confirmBudget: true,
+      },
+      { config, driver, runId: "20261122-budget", artifacts: true },
+    );
+    expect(r.status).toBe("partial");
+    expect(r.adr_path).toBeDefined();
+    expect(readFileSync(join(WS, r.adr_path!), "utf8")).toMatch(/council: partial/);
+    expect(r.report).toMatch(/⚠ бюджет исчерпан \(вызовов 3 из 3\)/);
   });
 });

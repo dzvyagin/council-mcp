@@ -574,6 +574,8 @@ export async function deliberate(
     driver: deps.driver,
     seats: plan.seats,
     tools: toolsFor(safeInput),
+    budget: plan.budget,
+    ...(deps.now && { now: deps.now }),
     seed: deps.runId,
     roundTimeoutS: config.participant.roundTimeoutS,
     emit,

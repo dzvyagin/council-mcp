@@ -44,6 +44,13 @@ export interface CouncilSessionOptions {
   retries?: number;
   /** Запись в транскрипт: каждая попытка ответа. */
   record?: (entry: TranscriptEntry) => void;
+  /** Бюджет запуска: протоколы проверяют его между раундами (overBudget). */
+  budget?: {
+    maxCalls?: number | undefined;
+    maxTokens?: number | undefined;
+    maxDurationS?: number | undefined;
+  };
+  now?: () => number;
 }
 
 export type RoundAnswers<T> = Map<string, T>;
@@ -53,8 +60,11 @@ export class CouncilSession {
   private readonly limiters = new Map<string, <R>(task: () => Promise<R>) => Promise<R>>();
   private readonly retries: number;
 
+  private readonly startedAt: number;
+
   constructor(private readonly options: CouncilSessionOptions) {
     this.retries = options.retries ?? 1;
+    this.startedAt = (options.now ?? Date.now)();
     this.seats = shuffle(options.seats, options.seed).map((spec, i) => ({
       alias: aliasFor(i),
       model: spec.model,
@@ -83,6 +93,26 @@ export class CouncilSession {
   /** Число разных моделей среди работающих мест. */
   get activeModels(): number {
     return new Set(this.activeSeats.map((s) => s.model.id)).size;
+  }
+
+  /**
+   * Бюджет исчерпан? Проверяется между раундами: текущий раунд дожидается, новые не начинаются,
+   * итог синтезируется из имеющегося со статусом partial.
+   */
+  overBudget(): string | undefined {
+    const b = this.options.budget;
+    if (!b) return undefined;
+    const u = this.usage;
+    if (b.maxCalls !== undefined && u.calls >= b.maxCalls)
+      return `вызовов ${String(u.calls)} из ${String(b.maxCalls)}`;
+    const tokens = u.inputTokens + u.outputTokens;
+    if (b.maxTokens !== undefined && tokens >= b.maxTokens)
+      return `токенов ${String(tokens)} из ${String(b.maxTokens)}`;
+    const elapsed = ((this.options.now ?? Date.now)() - this.startedAt) / 1000;
+    if (b.maxDurationS !== undefined && elapsed >= b.maxDurationS) {
+      return `время ${String(Math.round(elapsed))} с из ${String(b.maxDurationS)} с`;
+    }
+    return undefined;
   }
 
   get usage(): Usage {

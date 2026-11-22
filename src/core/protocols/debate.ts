@@ -151,12 +151,18 @@ export async function runDebate(
   }
 
   const rounds = input.rounds ?? DEFAULT_DEBATE_ROUNDS;
+  let budgetStopped = false;
   const passes: DebatePass[] = [];
   const order: [Seat, Seat][] = input.swapSides
     ? [debaters, [debaters[1], debaters[0]]]
     : [debaters];
 
   for (const [pi, [forFirst, forSecond]] of order.entries()) {
+    if (pi > 0 && session.overBudget() !== undefined) {
+      warnings.push("бюджет исчерпан — второй прогон с обменом сторон пропущен");
+      budgetStopped = true;
+      break;
+    }
     const pass: DebatePass = {
       sides: { first: forFirst.alias, second: forSecond.alias },
       turns: [],
@@ -166,6 +172,15 @@ export async function runDebate(
     const label = (alias: string) =>
       alias === forFirst.alias ? `${alias} за первый вариант` : `${alias} за второй вариант`;
     for (let r = 1; r <= rounds; r++) {
+      // Бюджет исчерпан — оставшиеся реплики пропускаем, судья решает по уже сказанному.
+      const stop = r > 1 ? session.overBudget() : undefined;
+      if (stop !== undefined) {
+        warnings.push(
+          `бюджет исчерпан (${stop}) — дебаты остановлены после раунда ${String(r - 1)}`,
+        );
+        budgetStopped = true;
+        break;
+      }
       const history = renderTurns(pass.turns.map((t) => ({ ...t, side: label(t.side) })));
       const turns = await session.askAll(
         `debate-${String(pi + 1)}-${String(r)}`,
@@ -241,7 +256,9 @@ export async function runDebate(
   });
 
   let status: RunStatus;
-  if (winnerIdx === undefined) {
+  if (budgetStopped) {
+    status = "partial";
+  } else if (winnerIdx === undefined) {
     status = "tie";
     if (passes.length > 1 && winners.every((w) => w !== undefined)) {
       warnings.push(

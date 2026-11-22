@@ -248,7 +248,12 @@ export async function runConsensus(
   if (current.size === 0) return base("failed", current);
   if (!quorumOk("propose", current)) return base("quorum_failed", current);
 
-  while (iterations < options.maxRounds && distinctModels(current.keys()) >= 2) {
+  let budgetStop: string | undefined = session.overBudget();
+  while (
+    budgetStop === undefined &&
+    iterations < options.maxRounds &&
+    distinctModels(current.keys()) >= 2
+  ) {
     iterations++;
     const labels = [...current.keys()];
     // Модель не критикует своих же персон.
@@ -279,6 +284,14 @@ export async function runConsensus(
     );
     if (!quorumOk(`critique-${String(iterations)}`, critiques))
       return base("quorum_failed", current);
+    budgetStop = session.overBudget();
+    if (budgetStop !== undefined) {
+      // Текущий раунд (критика) дождались; доработку не запускаем — синтез по предложениям.
+      lastCritiques = critiques;
+      ratings = bordaScores(critiques);
+      open = openFlaws(critiques, new Map());
+      break;
+    }
     ratings = bordaScores(critiques);
     lastCritiques = critiques;
     const place = (alias: string) => {
@@ -314,9 +327,11 @@ export async function runConsensus(
       return base("quorum_failed", revisions);
     current = new Map(revisions);
     open = openFlaws(critiques, revisions);
+    budgetStop ??= session.overBudget();
 
     if (distinctModels(current.keys()) < 2) break;
-    grouping = await groupKeys(session, current, common, ratings, iterations);
+    if (budgetStop === undefined)
+      grouping = await groupKeys(session, current, common, ratings, iterations);
     const criticals = open.filter((f) => f.severity === "critical");
     convergence = assess(
       positionsOf(current),
@@ -338,26 +353,30 @@ export async function runConsensus(
       chair: alias,
     };
   }
-  if (iterations === 0) {
-    convergence = assess(positions, canonicalizer(grouping), [], options.majorityThreshold);
+  if (convergence === undefined) {
+    // max_rounds = 0 или остановка по бюджету: сходимость — по имеющимся позициям.
+    const criticals = open.filter((f) => f.severity === "critical");
+    convergence = assess(positions, canonicalizer(grouping), criticals, options.majorityThreshold);
   }
 
-  const majority = convergence && convergence.status !== "none" ? convergence : undefined;
+  const majority = convergence.status !== "none" ? convergence : undefined;
   let status: RunStatus = majority ? majority.status : "no_consensus";
+  if (budgetStop !== undefined) {
+    warnings.push(`бюджет исчерпан (${budgetStop}) — итог синтезирован по уже прошедшим раундам`);
+    status = "partial";
+  }
   const veto = majority ? blockingVeto(open, majority.aliases) : undefined;
-  if (veto) status = "vetoed";
+  if (veto && status !== "partial") status = "vetoed";
   const score = majority
     ? consensusScore(positions, majority.aliases, open).score
-    : (convergence?.score ?? 0);
+    : convergence.score;
 
   const unanimous = majority?.status === "converged" && majority.aliases.length === current.size;
   const verdict = veto
     ? `большинство за ${majority?.key ?? "?"}, но наложено вето (${veto.critic}): ${veto.text}. Опиши решение и причину вето.`
-    : convergence === undefined
-      ? "проверка сходимости не проводилась"
-      : convergence.status === "none"
-        ? `консенсус не достигнут (${convergence.reason}); опиши позиции и что нужно для решения`
-        : `${convergence.status}: большинство ${convergence.aliases.join(", ")} за ${convergence.key}${unanimous ? " (единогласно)" : ""}`;
+    : convergence.status === "none"
+      ? `консенсус не достигнут (${convergence.reason}); опиши позиции и что нужно для решения`
+      : `${convergence.status}: большинство ${convergence.aliases.join(", ")} за ${convergence.key}${unanimous ? " (единогласно)" : ""}`;
 
   const canonical = canonicalizer(grouping);
   const form = outputRules(options.goal, options.style);
@@ -396,7 +415,7 @@ export async function runConsensus(
     decision: synthesis?.decision ?? fallback ?? "",
     ...(decisionKey !== undefined && { decisionKey }),
     ...(synthesis && { synthesis }),
-    ...(convergence && { convergence }),
+    convergence,
     score,
     ...(veto && { veto: { ...veto, persona: vetoPersona ?? veto.critic } }),
     ...(chair !== undefined && { chair }),
