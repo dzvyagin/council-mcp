@@ -1,0 +1,9 @@
+import { nodeConfigDeps } from "../core/config.js";
+import { main } from "./main.js";
+
+process.exitCode = main(process.argv.slice(2), {
+  stdout: (text) => process.stdout.write(text),
+  stderr: (text) => process.stderr.write(text),
+  configDeps: nodeConfigDeps,
+  debug: process.env.COUNCIL_DEBUG === "1",
+});
