@@ -1,5 +1,5 @@
 import type { DeliberationResult, ParticipantSummary } from "../types.js";
-import { formatDuration, formatTokens, markerFor } from "./format.js";
+import { formatDuration, formatTokens, markerFor, plural } from "./format.js";
 
 /** Единый отчёт по запуску (до ~2 КБ) — его хост показывает пользователю без пересказа. */
 
@@ -45,7 +45,7 @@ export function renderReport(r: Omit<DeliberationResult, "report">): string {
   if (r.open_questions.length > 0) lines.push(`Открытые вопросы: ${r.open_questions.length}`);
   for (const w of r.warnings) lines.push(`⚠ ${w}`);
   lines.push(
-    `Расход: ${r.usage.calls} вызовов · ${formatTokens(r.usage.prompt_tokens + r.usage.completion_tokens)} токенов · ${formatDuration(r.usage.duration_s * 1000)}`,
+    `Расход: ${r.usage.calls} ${plural(r.usage.calls, ["вызов", "вызова", "вызовов"])} · ${formatTokens(r.usage.prompt_tokens + r.usage.completion_tokens)} токенов · ${formatDuration(r.usage.duration_s * 1000)}`,
   );
   return lines.join("\n");
 }
