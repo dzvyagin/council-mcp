@@ -185,12 +185,60 @@ export async function councilSummary(projectDir: string): Promise<string | undef
   return lines.join("\n");
 }
 
-/** Подсказка роутера для обычного промпта: suggest — назвать команду; invoke — запустить её. */
+/** Какой инструмент совета соответствует команде роутера. */
+function toolFor(r: Route): string {
+  switch (r.command) {
+    case "council-embrace":
+      return `council_workflow с action "start" и ${JSON.stringify(r.args)}`;
+    case "council-status":
+      return 'council_workflow с action "status"';
+    case "council-usage":
+      return "council_usage";
+    case "council-costs":
+      return `council_estimate с ${JSON.stringify(r.args)}`;
+    default:
+      return `council_deliberate с ${JSON.stringify(r.args)}`;
+  }
+}
+
+/**
+ * Подсказка роутера для обычного промпта. invoke (по умолчанию) — агент сам вызывает совет:
+ * при высокой уверенности роутера — конкретный вызов, при средней — «проверь, подходит ли».
+ * suggest — только предложить пользователю. В обоих случаях — «не подходит — игнорируй».
+ */
 export function routerHint(text: string, mode: string): string | undefined {
   if (mode === "off" || text.trim().startsWith("/")) return undefined;
   const r = route(text);
   if (r.command === "none" || r.confidence === "low") return undefined;
-  return mode === "invoke"
-    ? `<council-hint>Запрос похож на /${r.command} (${r.reason}). Запусти эту команду совета с параметрами ${JSON.stringify(r.args)}, затем продолжай.</council-hint>`
-    : `<council-hint>Запрос похож на /${r.command} (${r.reason}). Предложи пользователю эту команду одной строкой, но не запускай совет без его согласия.</council-hint>`;
+  const ignore = "Если запрос на самом деле не про это — игнорируй подсказку и отвечай как обычно.";
+  if (mode === "suggest")
+    return `<council-hint>Запрос похож на задачу для совета моделей (${r.reason}). Предложи пользователю одной строкой запустить совет (${toolFor(r)}), но не запускай без его согласия. ${ignore}</council-hint>`;
+  return r.confidence === "high"
+    ? `<council-hint>Запрос похож на задачу для совета моделей (${r.reason}). Вызови сам, не спрашивая пользователя: ${toolFor(r)}; контекст (ключевые файлы, ограничения) добавь в context. ${ignore}</council-hint>`
+    : `<council-hint>Возможно, это ключевое решение (${r.reason}). Если задача меняет схему данных, контракты, публичное API, технологию или консистентность — вызови совет сам (${toolFor(r)}). ${ignore}</council-hint>`;
+}
+
+/**
+ * Постоянное правило для системного промпта хоста (вместо фрагмента AGENTS.md): когда агент
+ * сам зовёт совет. Отключение — COUNCIL_AUTO_ROUTER=off.
+ */
+export function autoRule(mode: string): string | undefined {
+  if (mode === "off") return undefined;
+  const how =
+    mode === "suggest"
+      ? "предложи пользователю запустить совет моделей и запусти после его согласия"
+      : "сам, не спрашивая разрешения, вызови совет моделей";
+  return [
+    "<council-rule>",
+    `Перед реализацией ${how} (MCP-сервер council: council_deliberate; режим подскажет council_route; сквозной процесс — council_workflow), если задача включает:`,
+    "- изменение схемы БД, новую таблицу, миграцию данных;",
+    "- новую границу сервиса или межсервисный контракт;",
+    "- изменение публичного API;",
+    "- выбор технологии, хранилища, брокера;",
+    "- решения по транзакциям и консистентности;",
+    "- или пользователь просит сравнить варианты либо принять архитектурное решение.",
+    "Простые правки, багфиксы, тесты, рефакторинг без смены контрактов и вопросы по коду — без совета.",
+    "Как вызывать — skill council. Решение совета (ADR со статусом proposed) покажи как есть; реализацию по нему начинай после подтверждения пользователя.",
+    "</council-rule>",
+  ].join("\n");
 }

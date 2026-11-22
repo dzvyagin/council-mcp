@@ -1,15 +1,14 @@
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { TEMPLATES } from "./templates.generated.js";
 
 /**
- * `council setup` — подготовка проекта: команды и агенты opencode, Skill,
+ * `council setup` — подготовка проекта для хостов без плагина (Claude Code, DSH): Skill,
  * council.config.json, `.council/` в .gitignore, MCP-конфиг хоста. Существующие файлы
- * без --force не перезаписываются; чужой opencode.json(c) не редактируется — выводится блок.
- * Секреты в файлы не пишутся: только ссылки {env:...}.
+ * без --force не перезаписываются; чужой .mcp.json не редактируется — выводится блок.
+ * Для opencode — подсказка про плагин. Секреты в файлы не пишутся.
  */
 
 export const HOSTS = ["opencode", "dsh", "claude"] as const;
@@ -32,21 +31,6 @@ export interface SetupResult {
   notes: string[];
 }
 
-export function mcpServerBlock(bundlePath: string): Record<string, unknown> {
-  return {
-    type: "local",
-    command: ["node", bundlePath, "mcp"],
-    environment: {
-      COUNCIL_BASE_URL: "{env:COUNCIL_BASE_URL}",
-      COUNCIL_API_KEY: "{env:COUNCIL_API_KEY}",
-      COUNCIL_MODELS: "{env:COUNCIL_MODELS}",
-      COUNCIL_WORKSPACE: ".",
-      COUNCIL_WAIT_S: "45",
-    },
-    codemode: false,
-  };
-}
-
 export async function runSetup(o: SetupOptions): Promise<SetupResult> {
   const r: SetupResult = { created: [], updated: [], skipped: [], notes: [] };
   const put = async (rel: string, content: string) => {
@@ -66,40 +50,15 @@ export async function runSetup(o: SetupOptions): Promise<SetupResult> {
     return t;
   };
 
-  // Skill — общий для всех хостов (.agents/skills — opencode, DSH, Codex, deepagents).
-  await put(".agents/skills/council/SKILL.md", template("skills/council/SKILL.md"));
-
   if (o.hosts.includes("opencode")) {
-    for (const name of Object.keys(TEMPLATES).filter(
-      (n) => n.startsWith("opencode/commands/") || n.startsWith("opencode/agents/"),
-    )) {
-      await put(`.opencode/${name.slice("opencode/".length)}`, template(name));
-    }
-    // Плагин: защита путей, сводка процесса, подсказка роутера; логика — в dist/plugin/lib.js.
-    const lib = pathToFileURL(join(dirname(o.bundlePath), "..", "plugin", "lib.js")).href;
-    await put(
-      ".opencode/plugins/council.ts",
-      template("opencode/plugins/council.ts").replace("__COUNCIL_PLUGIN_LIB__", lib),
+    // opencode: всё ставит плагин, один раз на машину — в проект ничего не пишем.
+    r.notes.push(
+      [
+        "opencode: поставьте плагин совета один раз на машину (MCP-сервер, Skill, автозапуск, защита путей):",
+        "  opencode plugin add git+https://<ваш git>/council-mcp.git#<версия>",
+        "Файлы в проекте для opencode не нужны.",
+      ].join("\n"),
     );
-    const configs = ["opencode.jsonc", "opencode.json"].filter((f) =>
-      existsSync(join(o.workspace, f)),
-    );
-    const block = mcpServerBlock(o.bundlePath);
-    if (configs.length === 0) {
-      await put(
-        "opencode.jsonc",
-        `${JSON.stringify({ $schema: "https://opencode.ai/config.json", mcp: { servers: { council: block } } }, null, 2)}\n`,
-      );
-    } else {
-      const text = await readFile(join(o.workspace, configs[0] as string), "utf8");
-      if (/"council"\s*:/.test(text)) {
-        r.skipped.push(`${configs[0] as string} (council уже настроен)`);
-      } else {
-        r.notes.push(
-          `Добавьте в ${configs[0] as string} в "mcp": { "servers": { … } } блок:\n"council": ${JSON.stringify(block, null, 2)}`,
-        );
-      }
-    }
   }
 
   if (o.hosts.includes("claude")) {
@@ -118,6 +77,8 @@ export async function runSetup(o: SetupOptions): Promise<SetupResult> {
   }
 
   if (o.hosts.includes("dsh")) {
+    // Skill для DSH (и других хостов, читающих .agents/skills).
+    await put(".agents/skills/council/SKILL.md", template("skills/council/SKILL.md"));
     r.notes.push(
       [
         "DeepSeek Harness: добавьте в ~/.dsh/cordis.patch.yml (для всех профилей) или",

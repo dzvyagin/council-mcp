@@ -389,7 +389,7 @@ export function loadConfig(deps: ConfigDeps = nodeConfigDeps()): CouncilConfig {
     protectedPaths: file.protectedPaths ?? DEFAULT_PROTECTED_PATHS,
     personas: file.personas ?? {},
     guard: env.COUNCIL_GUARD !== "off",
-    autoRouter: env.COUNCIL_AUTO_ROUTER ?? "suggest",
+    autoRouter: env.COUNCIL_AUTO_ROUTER ?? "invoke",
     logLevel: env.COUNCIL_LOG_LEVEL ?? "info",
   };
 }

@@ -46,7 +46,7 @@ describe("loadConfig: env", () => {
     expect(c.protectedPaths).toEqual(DEFAULT_PROTECTED_PATHS);
     expect(c.language).toBe("ru");
     expect(c.guard).toBe(true);
-    expect(c.autoRouter).toBe("suggest");
+    expect(c.autoRouter).toBe("invoke");
     expect(c.configPath).toBeUndefined();
   });
 

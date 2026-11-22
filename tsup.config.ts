@@ -1,9 +1,11 @@
+import { copyFile } from "node:fs/promises";
+
 import { defineConfig } from "tsup";
 
 // Один самодостаточный файл на точку входа: запуск без npm install (нет корпоративного npm).
 export default defineConfig({
-  // plugin/lib — логика плагина opencode (защита путей, сводка, роутер), его импортирует файл плагина.
-  entry: { "cli/index": "src/cli/index.ts", "plugin/lib": "src/plugin/lib.ts" },
+  // opencode/plugin — плагин opencode V2 (точка входа пакета для `opencode plugin add`).
+  entry: { "cli/index": "src/cli/index.ts", "opencode/plugin": "src/opencode/plugin.ts" },
   format: ["esm"],
   platform: "node",
   target: "node22",
@@ -12,6 +14,10 @@ export default defineConfig({
   splitting: false,
   sourcemap: false,
   clean: true,
+  // Skill регистрирует плагин из файла рядом с собой.
+  onSuccess: async () => {
+    await copyFile("integrations/skills/council/SKILL.md", "dist/opencode/SKILL.md");
+  },
   // CJS-зависимости (pino) зовут require(): в ESM-бандле даём им настоящий require.
   banner: {
     js: [

@@ -1,16 +1,15 @@
 /**
- * E2E плагина opencode V2 (настоящий opencode, плагин из `council setup`): правка миграции без
- * решения совета блокируется; COUNCIL_GUARD=off снимает защиту; состояние активного процесса
- * совета попадает в системный промпт каждого запроса (переживает сжатие контекста).
+ * E2E плагина opencode V2 (настоящий opencode, плагин из git через `opencode plugin add`):
+ * правка миграции без решения совета блокируется; COUNCIL_GUARD=off снимает защиту; состояние
+ * активного процесса совета попадает в системный промпт каждого запроса (переживает сжатие).
  */
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable, Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
 
 import * as acp from "@agentclientprotocol/sdk";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -19,10 +18,10 @@ import { loadConfig } from "../../src/core/config.js";
 import { WorkflowMachine } from "../../src/core/workflow/machine.js";
 import { which } from "../../src/drivers/acp/profiles.js";
 import { baseEnv, fakeDeps } from "../helpers.js";
+import { addHostModel, installPlugin, opencodeEnv } from "./install.js";
 
 const enabled = process.env.COUNCIL_E2E === "1";
 const opencode = which("opencode");
-const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const MIGRATION = "db/migrations/001_init.sql";
 
 interface Req {
@@ -82,46 +81,14 @@ describe.runIf(enabled && opencode)(
     let home: string;
 
     beforeAll(async () => {
-      execFileSync("npm", ["run", "build"], { cwd: ROOT, stdio: "ignore" });
       await new Promise<void>((r) => provider.server.listen(0, "127.0.0.1", r));
       const baseURL = `http://127.0.0.1:${String((provider.server.address() as AddressInfo).port)}/v1`;
+      const installed = installPlugin(opencode!);
+      home = installed.home;
+      addHostModel(installed.globalConfig, baseURL);
       ws = realpathSync(mkdtempSync(join(tmpdir(), "council-plugin-ws-")));
-      home = mkdtempSync(join(tmpdir(), "council-plugin-home-"));
-      execFileSync(
-        process.execPath,
-        [join(ROOT, "dist/cli/index.js"), "setup", "--host", "opencode"],
-        {
-          cwd: ws,
-          env: { PATH: process.env.PATH ?? "", HOME: home },
-          stdio: "ignore",
-        },
-      );
       mkdirSync(join(ws, "db/migrations"), { recursive: true });
       writeFileSync(join(ws, MIGRATION), "-- init\n");
-      // Хост без MCP-сервера: плагин работает сам по себе. Провайдер — фейковый.
-      writeFileSync(
-        join(ws, "opencode.jsonc"),
-        JSON.stringify({
-          $schema: "https://opencode.ai/config.json",
-          model: "fake/host",
-          providers: {
-            fake: {
-              name: "Fake",
-              env: ["FAKE_KEY"],
-              package: "@opencode/ai/providers/openai-compatible",
-              settings: { baseURL },
-              models: {
-                host: {
-                  modelID: "host",
-                  capabilities: { tools: true, input: ["text"], output: ["text"] },
-                  limit: { context: 128000, output: 8000 },
-                },
-              },
-            },
-          },
-          agents: { title: { disabled: true } },
-        }),
-      );
       // Активный процесс совета — его сводка должна попасть в системный промпт.
       const config = loadConfig(fakeDeps({ ...baseEnv, COUNCIL_WORKSPACE: ws }));
       await new WorkflowMachine({ config, newId: () => "wf-plugin" }).start(
@@ -137,20 +104,7 @@ describe.runIf(enabled && opencode)(
 
     async function hostTurn(extraEnv: Record<string, string>): Promise<Req[]> {
       const before = provider.requests.length;
-      const env = {
-        PATH: process.env.PATH ?? "",
-        HOME: home,
-        XDG_CONFIG_HOME: join(home, "config"),
-        XDG_DATA_HOME: join(home, "data"),
-        XDG_STATE_HOME: join(home, "state"),
-        XDG_CACHE_HOME: join(home, "cache"),
-        OPENCODE_DISABLE_MODELS_FETCH: "1",
-        OPENCODE_DISABLE_AUTOUPDATE: "1",
-        OPENCODE_DISABLE_FREE_MODELS: "1",
-        OPENCODE_DISABLE_CLAUDE_CODE: "1",
-        FAKE_KEY: "fake",
-        ...extraEnv,
-      };
+      const env = { ...opencodeEnv(home), FAKE_KEY: "fake", ...extraEnv };
       const child = spawn(opencode!, ["acp"], { cwd: ws, env, stdio: ["pipe", "pipe", "pipe"] });
       const connection = acp
         .client({ name: "e2e-plugin" })

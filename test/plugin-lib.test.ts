@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { runSetup } from "../src/cli/setup.js";
 import { loadConfig } from "../src/core/config.js";
 import { WorkflowMachine } from "../src/core/workflow/machine.js";
 import {
@@ -15,7 +15,9 @@ import {
   patchPaths,
   protectedMatch,
   routerHint,
+  autoRule,
 } from "../src/plugin/lib.js";
+import plugin, { mcpServer, skillInfo } from "../src/opencode/plugin.js";
 import { baseEnv, fakeDeps } from "./helpers.js";
 
 const ws = () => realpathSync(mkdtempSync(join(tmpdir(), "council-plugin-")));
@@ -166,30 +168,147 @@ describe("сводка для системного промпта", () => {
     expect(s!.length).toBeLessThan(1500);
   });
 
-  it("подсказка роутера: suggest — предложить, invoke — запустить, off и команды — ничего", () => {
-    expect(routerHint("REST или gRPC для внутреннего API?", "suggest")).toMatch(
-      /похож на \/council-debate.*не запускай совет без его согласия/,
+  it("подсказка роутера: invoke — вызвать самому, suggest — предложить, off и команды — ничего", () => {
+    const invoke = routerHint("REST или gRPC для внутреннего API?", "invoke");
+    expect(invoke).toMatch(
+      /Вызови сам, не спрашивая пользователя: council_deliberate с .*"mode":"debate"/,
     );
-    expect(routerHint("REST или gRPC для внутреннего API?", "invoke")).toMatch(
-      /Запусти эту команду совета/,
+    expect(invoke).toContain("игнорируй подсказку");
+    expect(routerHint("REST или gRPC для внутреннего API?", "suggest")).toMatch(
+      /Предложи пользователю.*не запускай без его согласия/,
+    );
+    // Средняя уверенность — только «проверь, подходит ли».
+    expect(routerHint("Нужна новая таблица для журнала платежей", "invoke")).toMatch(
+      /Возможно, это ключевое решение/,
+    );
+    expect(routerHint("Сделай это от исследования до реализации", "invoke")).toMatch(
+      /council_workflow с action "start"/,
     );
     expect(routerHint("REST или gRPC?", "off")).toBeUndefined();
-    expect(routerHint("/council что-то", "suggest")).toBeUndefined();
-    expect(routerHint("Поправь опечатку", "suggest")).toBeUndefined();
+    expect(routerHint("/council что-то", "invoke")).toBeUndefined();
+  });
+
+  it("правило автозапуска: invoke — сам, suggest — с согласием, off — нет", () => {
+    expect(autoRule("invoke")).toMatch(/сам, не спрашивая разрешения, вызови совет/);
+    expect(autoRule("invoke")).toContain("Простые правки, багфиксы");
+    expect(autoRule("suggest")).toMatch(/после его согласия/);
+    expect(autoRule("off")).toBeUndefined();
+  });
+
+  // Совет не должен запускаться на обычную работу с кодом (как negative eval у Octopus).
+  it.each([
+    "Поправь опечатку в README",
+    "Исправь баг в сервисе оплаты: NPE при пустой корзине",
+    "Что делает функция parseConfig?",
+    "Сколько будет 7×8?",
+    "Добавь лог в обработчик платежей",
+    "Переименуй переменную userId в customerId в сервисе заказов",
+    "Объясни, как работает кэш в этом модуле",
+    "Запусти тесты",
+    "Напиши юнит-тест для validateIban",
+    "Почини падающий тест в платёжном API",
+    "Покажи, где описан контракт заказов",
+  ])("не запускаться: «%s»", (text) => {
+    expect(routerHint(text, "invoke")).toBeUndefined();
+  });
+
+  it.each([
+    "Kafka или RabbitMQ для событий заказов?",
+    "Какую БД выбрать для платёжного журнала?",
+    "Нужно разделить монолит на сервисы — как провести границы?",
+    "Нужна новая таблица для журнала платежей и миграция данных",
+    "Проверь изменения в ветке перед мержем: go/no-go",
+  ])("запускаться: «%s»", (text) => {
+    expect(routerHint(text, "invoke")).toBeDefined();
   });
 });
 
-describe("setup ставит плагин", () => {
-  it(".opencode/plugins/council.ts с путём к dist/plugin/lib.js", async () => {
-    const dir = ws();
-    await runSetup({
-      workspace: dir,
-      hosts: ["opencode"],
-      force: false,
-      bundlePath: "/opt/council/dist/cli/index.js",
+describe("плагин opencode", () => {
+  interface Registered {
+    mcp: Map<string, unknown>;
+    skills: Map<string, { id: string; autoinvoke: boolean; content: string }>;
+    hooks: Map<string, (event: never) => unknown>;
+  }
+  async function load(dir: string): Promise<Registered> {
+    const reg: Registered = { mcp: new Map(), skills: new Map(), hooks: new Map() };
+    const hooks = {
+      hook: (name: string, cb: (event: never) => unknown) => {
+        reg.hooks.set(name, cb);
+        return Promise.resolve();
+      },
+    };
+    await plugin.setup({
+      location: { directory: dir },
+      tool: hooks,
+      session: hooks,
+      mcp: {
+        transform: (cb) => {
+          cb({ get: (n) => reg.mcp.get(n), set: (n, v) => reg.mcp.set(n, v) });
+          return Promise.resolve();
+        },
+      },
+      skill: {
+        transform: (cb) => {
+          cb({ get: (n) => reg.skills.get(n), add: (v) => reg.skills.set(v.id, v) });
+          return Promise.resolve();
+        },
+      },
     });
-    const plugin = readFileSync(join(dir, ".opencode/plugins/council.ts"), "utf8");
-    expect(plugin).toContain('const LIB = "file:///opt/council/dist/plugin/lib.js";');
-    expect(plugin).toContain('ctx.tool.hook("execute.before"');
+    return reg;
+  }
+
+  it("MCP-сервер council для проекта — без секретов в конфиге", () => {
+    expect(mcpServer("/work/p", "/opt/c/dist/cli/index.js")).toEqual({
+      type: "local",
+      command: ["node", "/opt/c/dist/cli/index.js", "mcp"],
+      environment: { COUNCIL_WORKSPACE: "/work/p" },
+      codemode: false,
+    });
+  });
+
+  it("регистрирует MCP, Skill и хуки; в системный промпт — правило автозапуска", async () => {
+    const dir = ws();
+    const reg = await load(dir);
+    expect(reg.mcp.get("council")).toMatchObject({ environment: { COUNCIL_WORKSPACE: dir } });
+    // Skill — из dist/opencode/SKILL.md; в исходниках его нет — проверяем разбор файла.
+    const skill = skillInfo(
+      fileURLToPath(new URL("../integrations/skills/council/SKILL.md", import.meta.url)),
+    );
+    expect(skill).toMatchObject({ id: "council", autoinvoke: true });
+    expect(skill?.description).toMatch(/Вызывай сам/);
+    expect([...reg.hooks.keys()].sort()).toEqual([
+      "compaction",
+      "context",
+      "execute.before",
+      "prompt",
+    ]);
+
+    const system: { type: string; text: string }[] = [];
+    await (reg.hooks.get("prompt") as (e: unknown) => unknown)({
+      sessionID: "s1",
+      prompt: { text: "Kafka или RabbitMQ для событий заказов?" },
+    });
+    await (reg.hooks.get("context") as (e: unknown) => Promise<void>)({ sessionID: "s1", system });
+    const text = system.map((p) => p.text).join("\n");
+    expect(text).toContain("<council-rule>");
+    expect(text).toContain("<council-hint>");
+  });
+
+  it("council уже настроен в конфиге — не переопределяет", async () => {
+    const reg: Map<string, unknown> = new Map([["council", { type: "local", command: ["x"] }]]);
+    const noop = { hook: () => Promise.resolve() };
+    await plugin.setup({
+      location: { directory: ws() },
+      tool: noop,
+      session: noop,
+      mcp: {
+        transform: (cb) => {
+          cb({ get: (n) => reg.get(n), set: (n, v) => reg.set(n, v) });
+          return Promise.resolve();
+        },
+      },
+      skill: { transform: () => Promise.resolve() },
+    });
+    expect(reg.get("council")).toEqual({ type: "local", command: ["x"] });
   });
 });

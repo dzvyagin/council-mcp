@@ -18,7 +18,7 @@ const ws = () => realpathSync(mkdtempSync(join(tmpdir(), "council-svc-")));
 const BUNDLE = "/opt/council-mcp/dist/cli/index.js";
 
 describe("council setup", () => {
-  it("чистый репозиторий: команды, агенты, Skill, конфиг, .gitignore, opencode.jsonc", async () => {
+  it("opencode: в проект — только конфиг и .gitignore, плагин ставится отдельно", async () => {
     const dir = ws();
     gitRepo(dir);
     const r = await runSetup({
@@ -28,33 +28,12 @@ describe("council setup", () => {
       bundlePath: BUNDLE,
       models: ["model-a", "model-b"],
     });
-    expect(r.created).toEqual(
-      expect.arrayContaining([
-        ".agents/skills/council/SKILL.md",
-        ".opencode/commands/council.md",
-        ".opencode/commands/council-embrace.md",
-        ".opencode/commands/council-auto.md",
-        ".opencode/agents/architect.md",
-        ".opencode/agents/conductor.md",
-        "opencode.jsonc",
-        "council.config.json",
-      ]),
-    );
-    expect(r.created).toContain(".gitignore");
-    const oc = JSON.parse(readFileSync(join(dir, "opencode.jsonc"), "utf8")) as {
-      mcp: {
-        servers: {
-          council: { command: string[]; environment: Record<string, string>; codemode: boolean };
-        };
-      };
-    };
-    expect(oc.mcp.servers.council).toMatchObject({
-      command: ["node", BUNDLE, "mcp"],
-      codemode: false,
-      environment: { COUNCIL_API_KEY: "{env:COUNCIL_API_KEY}" },
-    });
-    expect(readFileSync(join(dir, ".gitignore"), "utf8")).toMatch(/^\.council\/$/m);
+    expect(r.created.sort()).toEqual([".gitignore", "council.config.json"]);
+    expect(r.notes.join("\n")).toContain("opencode plugin add git+https://");
+    expect(existsSync(join(dir, ".opencode"))).toBe(false);
+    expect(existsSync(join(dir, "opencode.jsonc"))).toBe(false);
     expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
+    expect(readFileSync(join(dir, ".gitignore"), "utf8")).toMatch(/^\.council\/$/m);
     // Конфиг валиден и без секретов.
     const cfgText = readFileSync(join(dir, "council.config.json"), "utf8");
     expect(cfgText).not.toMatch(/key|token|password/i);
@@ -75,12 +54,10 @@ describe("council setup", () => {
     });
     expect(again.created).toEqual([]);
     expect(again.updated).toEqual([]);
-    expect(again.skipped).toEqual(
-      expect.arrayContaining(["opencode.jsonc (council уже настроен)", "council.config.json"]),
-    );
+    expect(again.skipped).toEqual(["council.config.json"]);
   });
 
-  it("чужой opencode.json и AGENTS.md не редактируются — для opencode.json выводится блок", async () => {
+  it("Claude Code и DSH: .mcp.json, Skill, блок YAML; чужие файлы не редактируются", async () => {
     const dir = ws();
     writeFileSync(join(dir, "opencode.json"), '{ "model": "x/y" }\n');
     writeFileSync(join(dir, "AGENTS.md"), "# Правила\n");
@@ -92,7 +69,6 @@ describe("council setup", () => {
       bundlePath: BUNDLE,
     });
     expect(readFileSync(join(dir, "opencode.json"), "utf8")).toBe('{ "model": "x/y" }\n');
-    expect(r.notes.join("\n")).toMatch(/Добавьте в opencode\.json[\s\S]*"council"/);
     expect(r.notes.join("\n")).toMatch(
       /DeepSeek Harness[\s\S]*serverName: council[\s\S]*\/opt\/council-mcp\/dist\/cli\/index\.js/,
     );
@@ -102,6 +78,7 @@ describe("council setup", () => {
       mcpServers: { council: { args: [BUNDLE, "mcp"] } },
     });
     expect(r.created).toContain(".claude/skills/council/SKILL.md");
+    expect(r.created).toContain(".agents/skills/council/SKILL.md");
   });
 
   it("шаблоны в бандле совпадают с integrations/ (npm run gen)", () => {

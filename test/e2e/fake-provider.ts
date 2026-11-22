@@ -250,8 +250,10 @@ export function toolResults(requests: ChatRequest[]): string[] {
 }
 
 /**
- * Хост-агент opencode: на команду /council вызывает council_deliberate (короткий wait_s, чтобы
- * проверить council_wait), пока идёт прогресс — council_wait, затем отвечает текстом отчёта.
+ * Хост-агент opencode, послушная модель: если в системном промпте есть правило совета
+ * (`<council-rule>` от плагина) и вопрос — архитектурный, сама вызывает council_deliberate
+ * (короткий wait_s, чтобы проверить council_wait), пока идёт прогресс — council_wait, затем
+ * отвечает текстом отчёта. Без правила или на обычный вопрос — отвечает текстом.
  */
 function hostCall(
   chat: ChatRequest,
@@ -260,6 +262,13 @@ function hostCall(
   const after = chat.messages.slice(lastUser + 1);
   const lastTool = [...after].reverse().find((m) => m.role === "tool");
   if (!lastTool) {
+    const system = chat.messages
+      .filter((m) => m.role === "system")
+      .map((m) => text(m.content))
+      .join("\n");
+    const question = text(chat.messages[lastUser]?.content);
+    if (!system.includes("<council-rule>") || !/(партиц|таблиц|схем)/i.test(question))
+      return undefined;
     return {
       name: "council_council_deliberate",
       arguments: JSON.stringify({
