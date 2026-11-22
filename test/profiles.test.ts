@@ -150,7 +150,7 @@ describe("resolveProfile", () => {
     };
     expect(resolveProfile(custom).label).toBe("my-agent --acp");
     const dsh = { ...config, participant: { ...config.participant, agent: "dsh" as const } };
-    expect(() => resolveProfile(dsh)).toThrow(/фазе 9/);
+    expect(() => resolveProfile(dsh)).toThrow(/DeepSeek Harness пока не поддерживаются/);
   });
 
   it("в окружение агента попадают только сеть и локаль", () => {

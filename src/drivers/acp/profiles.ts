@@ -288,7 +288,7 @@ export function resolveProfile(config: CouncilConfig, find = which): AgentProfil
   }
   if (agent === "dsh") {
     throw new ProfileError(
-      "профиль DeepSeek Harness появится в фазе 9; сейчас используйте opencode или agent = custom с командой dsh",
+      "участники на DeepSeek Harness пока не поддерживаются: DSH не умеет запрещать чтение .env и файлов из .gitignore. Используйте opencode (agent = auto или opencode)",
     );
   }
   const opencode = find("opencode");
