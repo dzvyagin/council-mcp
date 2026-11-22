@@ -17,6 +17,9 @@ export interface EstimateInput {
   researchFirst: boolean;
   /** Размер контекста от хоста (notes, diff), байт. */
   contextBytes: number;
+  /** debate: обмен сторонами (второй прогон) и нужно ли выделять варианты. */
+  swapSides?: boolean;
+  extractOptions?: boolean;
 }
 
 export interface History {
@@ -41,7 +44,15 @@ const MIN_HISTORY_CALLS = 5;
 
 export function estimateCalls(i: EstimateInput): { min: number; max: number } {
   const research = i.researchFirst ? i.seats : 0;
-  if (i.mode === "vote") return { min: research + i.seats, max: research + i.seats };
+  if (i.mode === "vote" || i.mode === "review")
+    return { min: research + i.seats, max: research + i.seats };
+  if (i.mode === "debate") {
+    // Два участника × раунды + судьи (остальные места), на каждый прогон; + выделение вариантов.
+    const passes = i.swapSides ? 2 : 1;
+    const perPass = 2 * Math.max(1, i.maxRounds) + Math.max(1, i.seats - 2);
+    const n = passes * perPass + (i.extractOptions ? 1 : 0);
+    return { min: n, max: n };
+  }
   const propose = i.seats;
   if (i.maxRounds === 0) return { min: research + propose + 1, max: research + propose + 2 };
   // Лучший случай: сошлись за одну итерацию без судьи. Худший: все итерации + судья + запасной председатель.

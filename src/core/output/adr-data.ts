@@ -1,4 +1,6 @@
 import type { ConsensusOutcome } from "../protocols/consensus.js";
+import type { DebateOutcome } from "../protocols/debate.js";
+import type { ReviewOutcome } from "../protocols/review.js";
 import type { VoteTally } from "../protocols/vote.js";
 import type { ParticipantSummary, VoteRecord } from "../types.js";
 import type { AdrData, AdrOption, AdrParticipant } from "./adr.js";
@@ -128,5 +130,76 @@ export function voteAdr(
     ...(dissent !== undefined && { dissent }),
     openQuestions: [],
     participants: participants(summaries, positions, new Map()),
+  };
+}
+
+export function debateAdr(base: Base, o: DebateOutcome, summaries: ParticipantSummary[]): AdrData {
+  const judgements = o.passes.flatMap((p) => [...p.judgements.values()]);
+  const pros = (i: 0 | 1) =>
+    uniq(judgements.map((j) => (i === 0 ? j.strongest_first : j.strongest_second)));
+  const supporters = (i: 0 | 1) =>
+    uniq(
+      o.passes.flatMap((p) => [
+        i === 0 ? p.sides.first : p.sides.second,
+        ...[...p.judgements.entries()]
+          .filter(([, j]) => j.winner === (i === 0 ? "first" : "second"))
+          .map(([alias]) => alias),
+      ]),
+    );
+  const scoreLine = o.scores
+    .map((s) => `- ${s.criterion}: ${s.first.toFixed(1)} против ${s.second.toFixed(1)}`)
+    .join("\n");
+  const positions = new Map<string, { key: string; confidence: number }>();
+  for (const p of o.passes) {
+    positions.set(p.sides.first, { key: o.options[0], confidence: 1 });
+    positions.set(p.sides.second, { key: o.options[1], confidence: 1 });
+    for (const [alias, j] of p.judgements) {
+      positions.set(alias, {
+        key: j.winner === "tie" ? "tie" : o.options[j.winner === "first" ? 0 : 1],
+        confidence: j.confidence,
+      });
+    }
+  }
+  return {
+    ...base,
+    decision: o.winner ?? "Судьи не определили победителя — решение за человеком.",
+    rationale: `${o.rationale}\n\nБаллы судей (первый вариант против второго):\n${scoreLine}`,
+    options: [0, 1].map((i) => ({
+      key: o.options[i as 0 | 1],
+      summary: o.options[i as 0 | 1],
+      supporters: supporters(i as 0 | 1),
+      pros: pros(i as 0 | 1),
+      cons: [],
+    })),
+    rejected: [],
+    risks: [],
+    ...(o.dissent !== undefined && { dissent: o.dissent }),
+    ...(o.conditions.length > 0 && { revisitWhen: o.conditions }),
+    openQuestions: [],
+    participants: participants(summaries, positions, o.roles),
+  };
+}
+
+export function reviewAdr(
+  base: Base,
+  o: ReviewOutcome,
+  decision: string,
+  summaries: ParticipantSummary[],
+): AdrData {
+  const positions = new Map(
+    [...o.reviews.entries()].map(([alias, r]) => [alias, { key: r.verdict, confidence: 1 }]),
+  );
+  return {
+    ...base,
+    decision,
+    rationale: [...o.reviews.entries()].map(([alias, r]) => `${alias}: ${r.summary}`).join("\n\n"),
+    options: [],
+    rejected: [],
+    risks: o.findings.map((f) => ({
+      risk: `${f.title}${f.file ? ` (${f.file}${f.line ? `:${String(f.line)}` : ""})` : ""} — ${f.detail}`,
+      severity: f.severity,
+    })),
+    openQuestions: [],
+    participants: participants(summaries, positions, o.roles),
   };
 }

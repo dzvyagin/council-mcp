@@ -91,9 +91,12 @@ describe("CLI", () => {
 
   it("run без вопроса и с неподдерживаемым режимом — код 2", async () => {
     expect((await run(["run"], baseEnv)).code).toBe(2);
-    const debate = await run(["run", "--mode", "debate", "-q", "x"], baseEnv);
-    expect(debate.code).toBe(2);
-    expect(debate.err).toMatch(/появится в следующих фазах/);
+    const bad = await run(["run", "--mode", "nope", "-q", "x"], baseEnv);
+    expect(bad.code).toBe(2);
+    expect(bad.err).toMatch(/--mode: ожидается consensus \| debate \| vote \| review/);
+    const review = await run(["run", "--mode", "review", "-q", "x"], baseEnv);
+    expect(review.code).toBe(2);
+    expect(review.err).toMatch(/для review нужен дифф/);
     expect((await run(["run", "-q", "x", "--max-rounds", "abc"], baseEnv)).code).toBe(2);
   });
 

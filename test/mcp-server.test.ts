@@ -133,7 +133,13 @@ describe("MCP-сервер council", () => {
       "council_wait",
     ]);
     const prompts = (await s.rpc("prompts/list")).result.prompts as { name: string }[];
-    expect(prompts.map((p) => p.name).sort()).toEqual(["costs", "council", "vote"]);
+    expect(prompts.map((p) => p.name).sort()).toEqual([
+      "costs",
+      "council",
+      "debate",
+      "review",
+      "vote",
+    ]);
     const got = await s.rpc("prompts/get", {
       name: "council",
       arguments: { request: "Как партиционировать?" },
@@ -228,8 +234,8 @@ describe("MCP-сервер council", () => {
     expect(r.text).toMatch(/COUNCIL_BASE_URL: не задана/);
     expect(r.text).not.toMatch(/\bat .+:\d+:\d+/);
     const s = await start();
-    const bad = await s.call("council_deliberate", { question: "q", mode: "debate" });
-    expect(bad.text).toMatch(/^Ошибка входа: mode: режим «debate» появится/);
+    const bad = await s.call("council_deliberate", { question: "q", mode: "review" });
+    expect(bad.text).toMatch(/^Ошибка входа: context\.diff: для review нужен дифф/);
   });
 
   it("council_cancel останавливает запуск", async () => {

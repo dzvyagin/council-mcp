@@ -47,6 +47,8 @@ export interface AdrData {
   confirmation?: string;
   plan?: { step: string; details: string; files: string[] }[];
   veto?: { persona: string; reason: string };
+  /** При каких условиях решение стоит пересмотреть (debate). */
+  revisitWhen?: string[];
   dissent?: string;
   openQuestions: string[];
   participants: AdrParticipant[];
@@ -206,6 +208,9 @@ export function renderAdr(number: number, d: AdrData): string {
     }
   }
 
+  if (d.revisitWhen && d.revisitWhen.length > 0) {
+    out.push("", "## Когда пересмотреть", "", bullets(d.revisitWhen.map(oneLine)));
+  }
   out.push("", "## Особое мнение", "", d.dissent?.trim() || "Нет: решение единогласно.");
   out.push("", "## Открытые вопросы", "", bullets(d.openQuestions.map(oneLine)));
 

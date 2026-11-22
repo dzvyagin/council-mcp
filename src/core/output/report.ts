@@ -39,7 +39,28 @@ export function renderReport(r: Omit<DeliberationResult, "report">): string {
   ];
   if (r.gate.veto) lines.push(`Вето (${r.gate.veto.persona}): ${clip(r.gate.veto.reason, 200)}`);
   if (r.dissent) lines.push(`Особое мнение: ${clip(r.dissent, 400)}`);
-  if (r.votes && r.votes.length > 0) {
+  if (r.debate) {
+    const d = r.debate;
+    lines.push(`Варианты: 1) ${clip(d.options[0], 80)} · 2) ${clip(d.options[1], 80)}`);
+    if (d.criteria.length > 0) {
+      lines.push(
+        `Баллы: ${d.criteria.map((c) => `${c.criterion} ${c.first.toFixed(1)}/${c.second.toFixed(1)}`).join(" · ")}`,
+      );
+    }
+    lines.push(
+      `Прогоны: ${d.passes.map((p, i) => `${i === 0 ? "" : "обмен сторон "}${p.first}↔${p.second} → ${p.winner ? clip(p.winner, 40) : "ничья"} (${p.confidence.toFixed(2)})`).join(" · ")}`,
+    );
+  } else if (r.review) {
+    const passes = r.votes?.filter((v) => v.choice === "pass").length ?? 0;
+    lines.push(
+      `Вердикт: ${r.review.verdict === "go" ? "GO" : "NO-GO"} · pass ${String(passes)}/${String(r.votes?.length ?? 0)} · critical ${String(r.review.criticals)}`,
+    );
+    for (const f of r.review.findings.slice(0, 5)) {
+      const where = f.file ? ` ${f.file}${f.line ? `:${String(f.line)}` : ""}` : "";
+      lines.push(`- [${f.severity}]${where} ${clip(f.title, 120)} (${f.by.join(", ")})`);
+    }
+    if (r.review.findings.length > 5) lines.push(`- … ещё ${String(r.review.findings.length - 5)}`);
+  } else if (r.votes && r.votes.length > 0) {
     lines.push(
       `Голоса: ${r.votes.map((v) => `${v.alias} ${clip(v.choice, 60)} ${v.confidence.toFixed(2)}`).join(" · ")}`,
     );

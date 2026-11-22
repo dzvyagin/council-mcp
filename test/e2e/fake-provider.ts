@@ -77,6 +77,44 @@ export function answerFor(tool: string, task: string, defaults: { vote?: unknown
       const keys = [...task.matchAll(/^- ([a-z0-9-]+):/gm)].map((m) => m[1]);
       return { groups: keys.map((k) => [k]), reason: "разные решения" };
     }
+    case "submit_debate_turn":
+      return {
+        arguments: [{ claim: "сервисы уже общаются по protobuf", evidence: "README.md:2" }],
+        rebuttals: [],
+        concessions: ["другой вариант проще отлаживать"],
+      };
+    case "submit_judgement":
+      return {
+        scores: [{ criterion: "корректность", first: 6, second: 8, note: "protobuf уже есть" }],
+        winner: "second",
+        confidence: 0.8,
+        rationale: "контракты уже в protobuf (README.md:2)",
+        strongest_first: "простота отладки",
+        strongest_second: "строгие контракты",
+        conditions: ["появятся внешние клиенты без поддержки gRPC"],
+      };
+    case "submit_options":
+      return { options: ["REST", "gRPC"], reason: "два протокола" };
+    case "submit_review": {
+      // «Ревьюер» находит заложенную SQL-инъекцию, если она есть в диффе.
+      const vulnerable = /SELECT[^\n]*"\s*\+\s*req\./.test(task);
+      return vulnerable
+        ? {
+            verdict: "fail",
+            summary: "SQL-инъекция",
+            findings: [
+              {
+                severity: "critical",
+                title: "SQL-инъекция в /payments",
+                file: "src/api.ts",
+                line: 1,
+                detail: "req.query.id конкатенируется в SQL",
+                blocker: true,
+              },
+            ],
+          }
+        : { verdict: "pass", summary: "замечаний нет", findings: [] };
+    }
     default:
       return {};
   }
@@ -167,7 +205,7 @@ function nextCall(
       ? undefined
       : { name: "read", arguments: args({ path: "README.md" }) };
   }
-  const tool = /(submit_[a-z]+)/.exec(task)?.[1];
+  const tool = /(submit_[a-z_]+)/.exec(task)?.[1];
   if (tool === undefined) return undefined; // служебный ход (например, результат субагента)
   const plan: { name: string; arguments: string }[] = [
     { name: "read", arguments: args({ path: ".env" }) },

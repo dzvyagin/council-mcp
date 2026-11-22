@@ -53,6 +53,28 @@ export interface DeliberationResult {
   open_questions: string[];
   votes?: VoteRecord[];
   warnings: string[];
+  /** review: вердикт go/no-go и находки. */
+  review?: {
+    verdict: "go" | "no-go";
+    score: number;
+    criticals: number;
+    findings: {
+      severity: "critical" | "major" | "minor";
+      title: string;
+      file?: string | undefined;
+      line?: number | undefined;
+      detail: string;
+      blocker: boolean;
+      by: string[];
+    }[];
+  };
+  /** debate: варианты, баллы по критериям, прогоны. */
+  debate?: {
+    options: [string, string];
+    winner?: string;
+    criteria: { criterion: string; first: number; second: number }[];
+    passes: { first: string; second: string; winner?: string; confidence: number }[];
+  };
   /** Пути относительно COUNCIL_WORKSPACE. */
   adr_path?: string;
   transcript_path: string;

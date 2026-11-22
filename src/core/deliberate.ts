@@ -17,6 +17,10 @@ import { dissentText, renderReport } from "./output/report.js";
 import { TranscriptWriter } from "./output/transcript.js";
 import type { AnswerTool, ParticipantDriver } from "./participant.js";
 import { consensusTools } from "./protocols/consensus-schemas.js";
+import { debateTools, reviewTools } from "./protocols/debate-schemas.js";
+import { runDebate } from "./protocols/debate.js";
+import { runReview } from "./protocols/review.js";
+import { debateAdr, reviewAdr } from "./output/adr-data.js";
 import { runConsensus } from "./protocols/consensus.js";
 import { runVote, voteTool } from "./protocols/vote.js";
 import {
@@ -44,6 +48,9 @@ export interface DeliberateInput {
   style?: Style;
   /** Шаг исследования перед раундами (только consensus). */
   researchFirst?: boolean;
+  /** debate: критерии судьи и второй прогон с обменом сторон. */
+  criteria?: string[];
+  swapSides?: boolean;
   budget?: Budget;
   /** Запускать, даже если прогноз превышает бюджет (подтверждение человека). */
   confirmBudget?: boolean;
@@ -87,7 +94,7 @@ export class BudgetError extends Error {
   }
 }
 
-const SUPPORTED: Mode[] = ["vote", "consensus"];
+const SUPPORTED: Mode[] = ["vote", "consensus", "debate", "review"];
 
 export function validate(input: DeliberateInput): void {
   if (input.question.trim().length === 0) throw new InputError("question: пустой вопрос");
@@ -95,6 +102,17 @@ export function validate(input: DeliberateInput): void {
     throw new InputError(
       `mode: режим «${input.mode}» появится в следующих фазах; сейчас доступны ${SUPPORTED.join(", ")}`,
     );
+  }
+  if (input.mode === "debate" && input.options && input.options.length !== 2) {
+    throw new InputError(
+      "options: для debate — ровно два варианта (или не передавайте, совет выделит их сам)",
+    );
+  }
+  if (input.mode === "review" && (input.diff === undefined || input.diff.trim() === "")) {
+    throw new InputError("context.diff: для review нужен дифф");
+  }
+  if (input.swapSides === true && input.mode !== "debate") {
+    throw new InputError("swap_sides: только для debate");
   }
   if (input.options) {
     const uniq = new Set(input.options.map((o) => o.trim()));
@@ -140,8 +158,9 @@ export async function planRun(
   runId: string,
 ): Promise<RunPlan> {
   validate(input);
-  const style = input.style ?? config.defaults.style;
-  const goal = input.goal ?? "decision";
+  // review по умолчанию — red-team-ревью без ADR.
+  const style = input.style ?? (input.mode === "review" ? "red-team" : config.defaults.style);
+  const goal = input.goal ?? (input.mode === "review" ? "review" : "decision");
   const panel = input.panel ?? config.defaults.panel;
   const maxRounds = input.maxRounds ?? config.defaults.maxRounds;
   const seats = buildPanel({
@@ -163,6 +182,10 @@ export async function planRun(
       maxRounds,
       researchFirst: input.researchFirst === true,
       contextBytes,
+      ...(input.mode === "debate" && {
+        swapSides: input.swapSides === true,
+        extractOptions: input.options?.length !== 2,
+      }),
     },
     history,
   );
@@ -180,7 +203,16 @@ export async function planRun(
 }
 
 function toolsFor(input: DeliberateInput): AnswerTool[] {
-  return input.mode === "vote" ? [voteTool(input.options)] : consensusTools();
+  switch (input.mode) {
+    case "vote":
+      return [voteTool(input.options)];
+    case "debate":
+      return debateTools();
+    case "review":
+      return reviewTools();
+    case "consensus":
+      return consensusTools();
+  }
 }
 
 type AdrBase = Parameters<typeof consensusAdr>[0];
@@ -195,6 +227,9 @@ interface ProtocolResult {
   votes: VoteRecord[];
   warnings: string[];
   veto?: { persona: string; reason: string };
+  /** Явный итог гейта (review: go/no-go), иначе — по статусу и score. */
+  passed?: boolean;
+  extra?: Pick<DeliberationResult, "review" | "debate">;
   adr: (base: AdrBase, summaries: ParticipantSummary[]) => AdrData;
 }
 
@@ -242,6 +277,9 @@ async function runProtocol(
     };
   }
 
+  if (input.mode === "debate") return debateResult(input, session, config, plan);
+  if (input.mode === "review") return reviewResult(input, session, config);
+
   const outcome = await runConsensus(
     session,
     {
@@ -285,6 +323,113 @@ async function runProtocol(
     votes,
     warnings,
     adr: (base, summaries) => consensusAdr(base, outcome, summaries),
+  };
+}
+
+async function debateResult(
+  input: DeliberateInput,
+  session: CouncilSession,
+  config: CouncilConfig,
+  plan: RunPlan,
+): Promise<ProtocolResult> {
+  const o = await runDebate(session, {
+    question: input.question,
+    ...(input.options && { options: input.options }),
+    ...(input.criteria && { criteria: input.criteria }),
+    ...(input.notes !== undefined && { notes: input.notes }),
+    ...(input.files && { files: input.files }),
+    ...(input.diff !== undefined && { diff: input.diff }),
+    rounds: input.maxRounds ?? plan.maxRounds,
+    ...(input.swapSides === true && { swapSides: true }),
+  });
+  const votes: VoteRecord[] = o.passes.flatMap((p) =>
+    [...p.judgements.entries()].map(([alias, j]) => ({
+      alias,
+      choice: j.winner === "tie" ? "tie" : o.options[j.winner === "first" ? 0 : 1],
+      confidence: j.confidence,
+      rationale: j.rationale,
+    })),
+  );
+  return {
+    status: o.status,
+    decision: o.winner ?? "",
+    ...(o.dissent !== undefined && { dissent: o.dissent }),
+    score: o.score,
+    threshold: config.defaults.majorityThreshold,
+    openQuestions: o.conditions,
+    votes,
+    warnings: o.warnings,
+    extra: {
+      debate: {
+        options: o.options,
+        ...(o.winner !== undefined && { winner: o.winner }),
+        criteria: o.scores,
+        passes: o.passes.map((p) => ({
+          first: p.sides.first,
+          second: p.sides.second,
+          ...(p.winner !== undefined && { winner: o.options[p.winner] }),
+          confidence: Math.round(p.confidence * 100) / 100,
+        })),
+      },
+    },
+    adr: (base, summaries) => debateAdr(base, o, summaries),
+  };
+}
+
+async function reviewResult(
+  input: DeliberateInput,
+  session: CouncilSession,
+  config: CouncilConfig,
+): Promise<ProtocolResult> {
+  const threshold = config.defaults.qualityThreshold;
+  const o = await runReview(
+    session,
+    {
+      question: input.question,
+      diff: input.diff ?? "",
+      ...(input.notes !== undefined && { notes: input.notes }),
+      ...(input.files && { files: input.files }),
+      maxBytes: input.maxBytes ?? DEFAULT_MAX_BYTES,
+    },
+    threshold,
+  );
+  const blockers = o.findings.filter((f) => f.blocker || f.severity === "critical");
+  const verdict = o.go ? "GO" : "NO-GO";
+  const decision =
+    o.status === "failed" || o.status === "quorum_failed"
+      ? ""
+      : o.go
+        ? `GO: изменения можно выкатывать${o.findings.length > 0 ? ` (замечаний: ${String(o.findings.length)})` : ""}`
+        : `NO-GO: ${
+            blockers
+              .slice(0, 3)
+              .map((f) => f.title)
+              .join("; ") || "большинство участников против выкатки"
+          }`;
+  const votes: VoteRecord[] = [...o.reviews.entries()].map(([alias, r]) => ({
+    alias,
+    choice: r.verdict,
+    confidence: 1,
+    rationale: r.summary,
+  }));
+  return {
+    status: o.status,
+    decision,
+    score: o.score,
+    threshold,
+    passed: o.go,
+    openQuestions: [],
+    votes,
+    warnings: o.warnings,
+    extra: {
+      review: {
+        verdict: verdict === "GO" ? "go" : "no-go",
+        score: Math.round(o.score * 100) / 100,
+        criticals: o.criticals,
+        findings: o.findings.slice(0, 20),
+      },
+    },
+    adr: (base, summaries) => reviewAdr(base, o, decision, summaries),
   };
 }
 
@@ -366,6 +511,7 @@ export async function deliberate(
       warnings.unshift("запуск отменён — итог по уже полученным ответам");
     }
     const passed =
+      (p.passed ?? true) &&
       (status === "converged" || status === "majority") &&
       p.score >= p.threshold &&
       p.veto === undefined;
@@ -415,6 +561,7 @@ export async function deliberate(
       participants: summaries,
       open_questions: p.openQuestions,
       votes: p.votes,
+      ...p.extra,
       warnings,
       ...(adrPath !== undefined && { adr_path: adrPath }),
       transcript_path: rel(transcript.path),

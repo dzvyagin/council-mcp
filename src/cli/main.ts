@@ -42,10 +42,11 @@ export interface CliIO {
 const HELP = `council — совет моделей для архитектурных решений
 
 Использование:
-  council run [--mode consensus|vote] --question "<вопрос>" [--notes "<ограничения>"] [--file <путь>]...
+  council run [--mode consensus|debate|vote|review] --question "<вопрос>" [--notes "<ограничения>"] [--file <путь>]...
               [--option A --option B] [--panel 3|5|7] [--goal advice|decision|plan|implement|review]
               [--style balanced|adversarial|red-team|executive|implementation] [--research-first]
-              [--max-rounds N] [--diff-file <путь>] [--budget-calls N] [--budget-tokens N]
+              [--max-rounds N] [--diff-file <путь>] [--criterion "…"]... [--swap-sides]
+              [--budget-calls N] [--budget-tokens N]
               [--confirm-budget] [--dry-run] [--no-adr] [--adr-title "…"] [--json]
   council mcp [--http [--host 127.0.0.1] [--port 8765]] [--wait-s 45]
                       MCP-сервер (stdio по умолчанию; логи в stderr)
@@ -128,6 +129,8 @@ async function run(args: string[], io: CliIO): Promise<number> {
       goal: { type: "string" },
       style: { type: "string" },
       "research-first": { type: "boolean", default: false },
+      criterion: { type: "string", multiple: true },
+      "swap-sides": { type: "boolean", default: false },
       "budget-calls": { type: "string" },
       "budget-tokens": { type: "string" },
       "confirm-budget": { type: "boolean", default: false },
@@ -161,6 +164,8 @@ async function run(args: string[], io: CliIO): Promise<number> {
     ...(values.goal !== undefined && { goal: values.goal as Goal }),
     ...(values.style !== undefined && { style: values.style as Style }),
     ...(values["research-first"] && { researchFirst: true }),
+    ...(values.criterion && { criteria: values.criterion }),
+    ...(values["swap-sides"] && { swapSides: true }),
     ...((maxCalls !== undefined || maxTokens !== undefined) && { budget: { maxCalls, maxTokens } }),
     ...(values["confirm-budget"] && { confirmBudget: true }),
     ...(values["no-adr"] && { writeAdr: false }),
