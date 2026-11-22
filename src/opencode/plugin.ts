@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,9 +10,11 @@ import { autoRule, councilSummary, guard, routerHint } from "../plugin/lib.js";
  * системном промпте, подсказку роутера, защиту путей и состояние совета в каждом запросе.
  * В проект при установке ничего не пишется.
  *
- * Секреты в конфиг opencode не попадают: MCP-сервер наследует окружение opencode
- * (COUNCIL_BASE_URL, COUNCIL_API_KEY, COUNCIL_MODELS), плагин задаёт только папку проекта.
- * Выключатели: COUNCIL_AUTO_ROUTER=off|suggest|invoke (по умолчанию invoke), COUNCIL_GUARD=off.
+ * Настройки — из `options` плагина в opencode.json (сервис opencode читает их сам, `{env:…}` и
+ * `{file:…}` подставляет opencode), иначе из окружения сервиса: baseURL / COUNCIL_BASE_URL,
+ * apiKey / COUNCIL_API_KEY, models / COUNCIL_MODELS, autoRouter / COUNCIL_AUTO_ROUTER
+ * (off|suggest|invoke, по умолчанию invoke), guard / COUNCIL_GUARD, node — путь к node.
+ * Окружение сервиса ненадёжно: его запускает не ваша оболочка (TUI, приложение, launchd).
  *
  * Типы API плагина описаны здесь структурно: `@opencode/plugin` — потребитель, не зависимость.
  */
@@ -48,6 +50,7 @@ interface McpLocal {
 }
 export interface PluginContext {
   location: { directory: string };
+  options?: Readonly<Record<string, unknown>>;
   tool: Hooks;
   session: Hooks;
   mcp: { transform(cb: (e: Editor<McpLocal>) => void): Promise<unknown> };
@@ -59,12 +62,49 @@ const here = dirname(fileURLToPath(import.meta.url));
 export const CLI_PATH = join(here, "..", "cli", "index.js");
 export const SKILL_PATH = join(here, "SKILL.md");
 
-/** Конфиг MCP-сервера council для проекта (без секретов). */
-export function mcpServer(projectDir: string, cliPath = CLI_PATH): McpLocal {
+/** Настройки совета: options плагина важнее окружения сервиса opencode. */
+export interface CouncilOptions {
+  environment: Record<string, string>;
+  autoRouter: string;
+  node: string;
+}
+
+export function councilOptions(
+  options: Readonly<Record<string, unknown>> = {},
+  env: Record<string, string | undefined> = process.env,
+): CouncilOptions {
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" && v.trim() !== "" && !/^\{(env|file):/.test(v) ? v.trim() : undefined;
+  const models = Array.isArray(options.models)
+    ? options.models.filter((m): m is string => typeof m === "string").join(",")
+    : str(options.models);
+  const pick: [string, string | undefined][] = [
+    ["COUNCIL_BASE_URL", str(options.baseURL) ?? env.COUNCIL_BASE_URL],
+    ["COUNCIL_API_KEY", str(options.apiKey) ?? env.COUNCIL_API_KEY],
+    ["COUNCIL_MODELS", (models !== "" ? models : undefined) ?? env.COUNCIL_MODELS],
+    ["COUNCIL_AGENT", str(options.agent) ?? env.COUNCIL_AGENT],
+    ["COUNCIL_GUARD", str(options.guard) ?? env.COUNCIL_GUARD],
+    ["COUNCIL_LOG_LEVEL", str(options.logLevel) ?? env.COUNCIL_LOG_LEVEL],
+  ];
+  return {
+    environment: Object.fromEntries(
+      pick.filter((p): p is [string, string] => p[1] !== undefined && p[1] !== ""),
+    ),
+    autoRouter: str(options.autoRouter) ?? env.COUNCIL_AUTO_ROUTER ?? "invoke",
+    node: str(options.node) ?? "node",
+  };
+}
+
+/** Конфиг MCP-сервера council для проекта. */
+export function mcpServer(
+  projectDir: string,
+  opts: CouncilOptions = councilOptions(),
+  cliPath = CLI_PATH,
+): McpLocal {
   return {
     type: "local",
-    command: ["node", cliPath, "mcp"],
-    environment: { COUNCIL_WORKSPACE: projectDir },
+    command: [opts.node, cliPath, "mcp"],
+    environment: { ...opts.environment, COUNCIL_WORKSPACE: projectDir },
     codemode: false,
   };
 }
@@ -85,13 +125,17 @@ export default {
   id: "council",
   async setup(ctx: PluginContext) {
     const projectDir = ctx.location.directory;
-    const routerMode = process.env.COUNCIL_AUTO_ROUTER ?? "invoke";
+    const opts = councilOptions(ctx.options);
+    const routerMode = opts.autoRouter;
+    if (!existsSync(CLI_PATH))
+      console.error(`council: не найден ${CLI_PATH} — переустановите плагин (см. README).`);
     const councilSessions = new Set<string>();
     const hints = new Map<string, string>();
 
-    // MCP-сервер совета для этого проекта (если council уже настроен в конфиге — не трогаем).
+    // MCP-сервер совета для этого проекта. Имя council принадлежит плагину: ручной блок с
+    // устаревшим путём (например, в старый каталог кэша) заменяется актуальным.
     await ctx.mcp.transform((e) => {
-      if (!e.get("council")) e.set("council", mcpServer(projectDir));
+      e.set("council", mcpServer(projectDir, opts));
     });
     const skill = skillInfo();
     if (skill) {
@@ -113,6 +157,7 @@ export default {
           tool: event.tool,
           input: event.input,
           councilInSession: councilSessions.has(event.sessionID),
+          env: { COUNCIL_GUARD: opts.environment.COUNCIL_GUARD ?? process.env.COUNCIL_GUARD },
         });
         if (!decision.allowed) throw new Error(decision.reason);
       },

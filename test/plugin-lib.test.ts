@@ -17,7 +17,7 @@ import {
   routerHint,
   autoRule,
 } from "../src/plugin/lib.js";
-import plugin, { mcpServer, skillInfo } from "../src/opencode/plugin.js";
+import plugin, { CLI_PATH, councilOptions, mcpServer, skillInfo } from "../src/opencode/plugin.js";
 import { baseEnv, fakeDeps } from "./helpers.js";
 
 const ws = () => realpathSync(mkdtempSync(join(tmpdir(), "council-plugin-")));
@@ -257,13 +257,44 @@ describe("плагин opencode", () => {
     return reg;
   }
 
-  it("MCP-сервер council для проекта — без секретов в конфиге", () => {
-    expect(mcpServer("/work/p", "/opt/c/dist/cli/index.js")).toEqual({
+  it("MCP-сервер council: настройки из options важнее окружения сервиса", () => {
+    const opts = councilOptions(
+      {
+        baseURL: "https://llm.bank/v1",
+        apiKey: "sk-from-options",
+        models: ["a", "b"],
+        autoRouter: "suggest",
+        node: "/usr/local/bin/node",
+      },
+      { COUNCIL_BASE_URL: "https://env/v1", COUNCIL_API_KEY: "sk-env", COUNCIL_AGENT: "opencode" },
+    );
+    expect(mcpServer("/work/p", opts, "/opt/c/dist/cli/index.js")).toEqual({
       type: "local",
-      command: ["node", "/opt/c/dist/cli/index.js", "mcp"],
-      environment: { COUNCIL_WORKSPACE: "/work/p" },
+      command: ["/usr/local/bin/node", "/opt/c/dist/cli/index.js", "mcp"],
+      environment: {
+        COUNCIL_BASE_URL: "https://llm.bank/v1",
+        COUNCIL_API_KEY: "sk-from-options",
+        COUNCIL_MODELS: "a,b",
+        COUNCIL_AGENT: "opencode",
+        COUNCIL_WORKSPACE: "/work/p",
+      },
       codemode: false,
     });
+    expect(opts.autoRouter).toBe("suggest");
+  });
+
+  it("без options — окружение; неподставленный {env:…} считается пустым", () => {
+    const opts = councilOptions(
+      { apiKey: "{env:COUNCIL_API_KEY}", models: "x, y" },
+      { COUNCIL_API_KEY: "sk-env", COUNCIL_BASE_URL: "https://env/v1" },
+    );
+    expect(opts.environment).toEqual({
+      COUNCIL_BASE_URL: "https://env/v1",
+      COUNCIL_API_KEY: "sk-env",
+      COUNCIL_MODELS: "x, y",
+    });
+    expect(opts.autoRouter).toBe("invoke");
+    expect(opts.node).toBe("node");
   });
 
   it("регистрирует MCP, Skill и хуки; в системный промпт — правило автозапуска", async () => {
@@ -294,7 +325,7 @@ describe("плагин opencode", () => {
     expect(text).toContain("<council-hint>");
   });
 
-  it("council уже настроен в конфиге — не переопределяет", async () => {
+  it("ручной блок council (устаревший путь) заменяется актуальным", async () => {
     const reg: Map<string, unknown> = new Map([["council", { type: "local", command: ["x"] }]]);
     const noop = { hook: () => Promise.resolve() };
     await plugin.setup({
@@ -309,6 +340,6 @@ describe("плагин opencode", () => {
       },
       skill: { transform: () => Promise.resolve() },
     });
-    expect(reg.get("council")).toEqual({ type: "local", command: ["x"] });
+    expect(reg.get("council")).toMatchObject({ type: "local", command: ["node", CLI_PATH, "mcp"] });
   });
 });

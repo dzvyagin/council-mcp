@@ -235,7 +235,7 @@ export function buildMcpServer(runtime: CouncilRuntime, defaultWaitS = DEFAULT_W
   const configError = () => {
     const state = runtime.config();
     return text(
-      `${state.ok ? "" : state.error}\n\nНастройте переменные окружения MCP-сервера council (см. council doctor).`,
+      `${state.ok ? "" : state.error}\n\nНастройте совет: в opencode — options плагина council в ~/.config/opencode/opencode.json (baseURL, apiKey, models; см. README), в других хостах — переменные окружения MCP-сервера council. Проверка — council_doctor.`,
       true,
     );
   };

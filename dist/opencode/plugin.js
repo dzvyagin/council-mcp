@@ -8,7 +8,7 @@ var __export = (target, all) => {
 };
 
 // src/opencode/plugin.ts
-import { readFileSync as readFileSync2 } from "fs";
+import { existsSync as existsSync2, readFileSync as readFileSync2 } from "fs";
 import { dirname, join as join6 } from "path";
 import { fileURLToPath } from "url";
 
@@ -20349,11 +20349,30 @@ function autoRule(mode) {
 var here = dirname(fileURLToPath(import.meta.url));
 var CLI_PATH = join6(here, "..", "cli", "index.js");
 var SKILL_PATH = join6(here, "SKILL.md");
-function mcpServer(projectDir, cliPath = CLI_PATH) {
+function councilOptions(options = {}, env = process.env) {
+  const str = (v) => typeof v === "string" && v.trim() !== "" && !/^\{(env|file):/.test(v) ? v.trim() : void 0;
+  const models = Array.isArray(options.models) ? options.models.filter((m) => typeof m === "string").join(",") : str(options.models);
+  const pick2 = [
+    ["COUNCIL_BASE_URL", str(options.baseURL) ?? env.COUNCIL_BASE_URL],
+    ["COUNCIL_API_KEY", str(options.apiKey) ?? env.COUNCIL_API_KEY],
+    ["COUNCIL_MODELS", (models !== "" ? models : void 0) ?? env.COUNCIL_MODELS],
+    ["COUNCIL_AGENT", str(options.agent) ?? env.COUNCIL_AGENT],
+    ["COUNCIL_GUARD", str(options.guard) ?? env.COUNCIL_GUARD],
+    ["COUNCIL_LOG_LEVEL", str(options.logLevel) ?? env.COUNCIL_LOG_LEVEL]
+  ];
+  return {
+    environment: Object.fromEntries(
+      pick2.filter((p) => p[1] !== void 0 && p[1] !== "")
+    ),
+    autoRouter: str(options.autoRouter) ?? env.COUNCIL_AUTO_ROUTER ?? "invoke",
+    node: str(options.node) ?? "node"
+  };
+}
+function mcpServer(projectDir, opts = councilOptions(), cliPath = CLI_PATH) {
   return {
     type: "local",
-    command: ["node", cliPath, "mcp"],
-    environment: { COUNCIL_WORKSPACE: projectDir },
+    command: [opts.node, cliPath, "mcp"],
+    environment: { ...opts.environment, COUNCIL_WORKSPACE: projectDir },
     codemode: false
   };
 }
@@ -20371,11 +20390,14 @@ var plugin_default = {
   id: "council",
   async setup(ctx) {
     const projectDir = ctx.location.directory;
-    const routerMode = process.env.COUNCIL_AUTO_ROUTER ?? "invoke";
+    const opts = councilOptions(ctx.options);
+    const routerMode = opts.autoRouter;
+    if (!existsSync2(CLI_PATH))
+      console.error(`council: \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D ${CLI_PATH} \u2014 \u043F\u0435\u0440\u0435\u0443\u0441\u0442\u0430\u043D\u043E\u0432\u0438\u0442\u0435 \u043F\u043B\u0430\u0433\u0438\u043D (\u0441\u043C. README).`);
     const councilSessions = /* @__PURE__ */ new Set();
     const hints = /* @__PURE__ */ new Map();
     await ctx.mcp.transform((e) => {
-      if (!e.get("council")) e.set("council", mcpServer(projectDir));
+      e.set("council", mcpServer(projectDir, opts));
     });
     const skill = skillInfo();
     if (skill) {
@@ -20394,7 +20416,8 @@ var plugin_default = {
           projectDir,
           tool: event.tool,
           input: event.input,
-          councilInSession: councilSessions.has(event.sessionID)
+          councilInSession: councilSessions.has(event.sessionID),
+          env: { COUNCIL_GUARD: opts.environment.COUNCIL_GUARD ?? process.env.COUNCIL_GUARD }
         });
         if (!decision.allowed) throw new Error(decision.reason);
       }
@@ -20432,6 +20455,7 @@ ${summary}`
 export {
   CLI_PATH,
   SKILL_PATH,
+  councilOptions,
   plugin_default as default,
   mcpServer,
   skillInfo

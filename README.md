@@ -12,40 +12,57 @@
 
 ## Установка в opencode
 
-1. Задайте переменные окружения (например, в `~/.bashrc`):
+Добавьте плагин в глобальный конфиг opencode `~/.config/opencode/opencode.json` (если файл уже
+есть — допишите запись в массив `plugins`):
 
-   ```bash
-   export COUNCIL_BASE_URL=https://llm.example/v1
-   export COUNCIL_API_KEY=...
-   export COUNCIL_MODELS=model-a,model-b,model-c
-   ```
+```json
+{
+  "plugins": [
+    {
+      "package": "git+https://github.com/dzvyagin/council-mcp.git",
+      "options": {
+        "baseURL": "https://llm.example/v1",
+        "models": ["model-a", "model-b", "model-c"],
+        "apiKey": "{file:~/.config/council/api-key}"
+      }
+    }
+  ]
+}
+```
 
-2. Поставьте плагин (один раз на машину):
-
-   ```bash
-   opencode plugin add git+https://github.com/dzvyagin/council-mcp.git
-   ```
-
-   Из внутреннего зеркала — тот же адрес вашего git. Закрепить версию — суффикс тега, например
-   `…council-mcp.git#v0.1.0`.
-
-3. Перезапустите фоновый сервис opencode, чтобы он увидел переменные:
-
-   ```bash
-   opencode service restart
-   ```
-
-В проекты ничего копировать не нужно: плагин сам подключает совет в любом проекте. Репозиторий —
-готовый пакет (собранный `dist/` в нём), поэтому npm-реестр для установки не нужен.
-
-Обновление: opencode кэширует плагин из git и сам его не обновляет. Удалите плагин и кэш, затем
-поставьте снова:
+Положите ключ в файл (только для себя):
 
 ```bash
-opencode plugin remove git+https://github.com/dzvyagin/council-mcp.git
-rm -rf ~/.cache/opencode/npm/git-council-mcp-*
-opencode plugin add git+https://github.com/dzvyagin/council-mcp.git
+mkdir -p ~/.config/council && printf '%s' 'ВАШ_КЛЮЧ' > ~/.config/council/api-key && chmod 600 ~/.config/council/api-key
 ```
+
+Перезапустите opencode:
+
+```bash
+opencode service restart
+```
+
+opencode сам скачает плагин из git, а плагин подключит совет в любом проекте. В проекты ничего
+копировать не нужно, npm-реестр не нужен. Из внутреннего зеркала укажите адрес вашего git;
+закрепить версию — суффикс тега (`…council-mcp.git#v0.1.0`).
+
+Проверка: в opencode выполните `/council:setup` — агент вызовет `council_doctor` и покажет, что
+не так. `opencode mcp list` сервер совета не показывает: он видит только серверы из файлов
+конфига, а этот регистрирует плагин.
+
+Ключ можно брать и из окружения — `"apiKey": "{env:COUNCIL_API_KEY}"`, но фоновый сервис
+opencode запускает не ваша оболочка, и переменных из `~/.bashrc` или `~/.zshrc` он часто не
+видит. Поэтому надёжнее файл.
+
+Обновление: opencode кэширует плагин и сам его не обновляет. Удалите кэш и перезапустите
+сервис:
+
+```bash
+rm -rf ~/.cache/opencode/npm/git-council-mcp-*
+opencode service restart
+```
+
+Если задан `XDG_CACHE_HOME`, кэш лежит в `$XDG_CACHE_HOME/opencode/npm/`.
 
 ## Как пользоваться
 
@@ -60,8 +77,8 @@ opencode plugin add git+https://github.com/dzvyagin/council-mcp.git
 Вызвать совет вручную: `/council:council <вопрос>`, `/council:debate`, `/council:vote`,
 `/council:review`, `/council:embrace` (полный цикл от исследования до кода).
 
-Автозапуск настраивается переменной `COUNCIL_AUTO_ROUTER`: `invoke` (по умолчанию) — агент
-зовёт совет сам, `suggest` — сначала спрашивает вас, `off` — только вручную.
+Автозапуск — параметр `"autoRouter"` в `options`: `invoke` (по умолчанию) — агент зовёт совет
+сам, `suggest` — сначала спрашивает вас, `off` — только вручную.
 
 ## Что появляется в проекте
 
@@ -86,13 +103,13 @@ opencode plugin add git+https://github.com/dzvyagin/council-mcp.git
 ## Безопасность
 
 Участники совета только читают проект. Им недоступны `.env*`, ключи и файлы из `.gitignore`.
-Секреты маскируются в промптах, логах и ADR. Ключ берётся только из окружения и не пишется в
-конфиги. Сетевые вызовы идут только на `COUNCIL_BASE_URL`, телеметрии нет.
+Секреты маскируются в промптах, логах и ADR. Ключ не пишется ни в проект, ни в
+`opencode.json` — только ссылка на файл или переменную. Сетевые вызовы идут только на `COUNCIL_BASE_URL`, телеметрии нет.
 
 ## Без доступа к git
 
 Перенесите копию пакета папкой: `npm run release -- --dir /opt/council` на машине с репозиторием,
-затем на целевой — `opencode plugin add git+file:///opt/council`.
+затем на целевой укажите в конфиге `"package": "git+file:///opt/council"`.
 
 ## Подробнее
 

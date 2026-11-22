@@ -41,7 +41,13 @@ describe.runIf(enabled && opencode)("e2e: плагин из git, совет за
     baseURL = `http://127.0.0.1:${String((provider.server.address() as AddressInfo).port)}/v1`;
     const installed = installPlugin(opencode!);
     home = installed.home;
-    addHostModel(installed.globalConfig, baseURL);
+    // Настройки совета — в options плагина (как у пользователя в opencode.json), не в окружении.
+    addHostModel(installed.globalConfig, baseURL, {
+      baseURL,
+      apiKey: "sk-host-e2e-key-123456",
+      models: ["fake-a", "fake-b"],
+      agent: "opencode",
+    });
     workspace = realpathSync(mkdtempSync(join(tmpdir(), "council-host-ws-")));
     writeFileSync(
       join(workspace, "README.md"),
@@ -57,15 +63,8 @@ describe.runIf(enabled && opencode)("e2e: плагин из git, совет за
   });
 
   it("обычный вопрос → хост сам вызывает совет, ждёт через council_wait; ADR в репозитории", async () => {
-    // Ключи — только в окружении opencode: MCP-сервер, зарегистрированный плагином, наследует их.
-    const env: Record<string, string> = {
-      ...opencodeEnv(home),
-      FAKE_KEY: "fake",
-      COUNCIL_BASE_URL: baseURL,
-      COUNCIL_API_KEY: "sk-host-e2e-key-123456",
-      COUNCIL_MODELS: "fake-a,fake-b",
-      COUNCIL_AGENT: "opencode",
-    };
+    // В окружении opencode нет ни одной COUNCIL_* — всё из options плагина.
+    const env: Record<string, string> = { ...opencodeEnv(home), FAKE_KEY: "fake" };
     // Хост ведём через ACP, как Zed или другой клиент.
     const child = spawn(opencode!, ["acp"], {
       cwd: workspace,

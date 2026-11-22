@@ -43,14 +43,25 @@ export function installPlugin(opencode: string): { home: string; globalConfig: s
   return { home, globalConfig: join(home, "config/opencode/opencode.json") };
 }
 
-/** Дописывает в глобальный конфиг фейкового провайдера для модели хоста. */
-export function addHostModel(globalConfig: string, baseURL: string): void {
-  const config = JSON.parse(readFileSync(globalConfig, "utf8")) as Record<string, unknown>;
+/**
+ * Дописывает в глобальный конфиг фейкового провайдера для модели хоста; `options` — настройки
+ * плагина council (запись плагина переводится в форму `{ package, options }`).
+ */
+export function addHostModel(
+  globalConfig: string,
+  baseURL: string,
+  options?: Record<string, unknown>,
+): void {
+  const config = JSON.parse(readFileSync(globalConfig, "utf8")) as { plugins?: unknown[] };
+  const plugins = (config.plugins ?? []).map((p) =>
+    options && typeof p === "string" ? { package: p, options } : p,
+  );
   writeFileSync(
     globalConfig,
     JSON.stringify(
       {
         ...config,
+        plugins,
         model: "fake/host",
         update: "disable",
         share: "disabled",
