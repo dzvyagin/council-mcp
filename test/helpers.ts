@@ -1,4 +1,5 @@
-import { mkdtempSync, realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -28,4 +29,15 @@ export function fakeDeps(
       return typeof value === "string" ? value : JSON.stringify(value);
     },
   };
+}
+
+/** git-репозиторий с одним коммитом (для worktree и handoff). */
+export function gitRepo(dir: string): void {
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "ignore" });
+  git("init", "-q", "-b", "main");
+  git("config", "user.email", "t@example.com");
+  git("config", "user.name", "t");
+  writeFileSync(join(dir, "README.md"), "# demo\n");
+  git("add", ".");
+  git("commit", "-q", "-m", "init");
 }

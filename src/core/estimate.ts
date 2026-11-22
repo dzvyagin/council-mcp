@@ -44,7 +44,7 @@ const MIN_HISTORY_CALLS = 5;
 
 export function estimateCalls(i: EstimateInput): { min: number; max: number } {
   const research = i.researchFirst ? i.seats : 0;
-  if (i.mode === "vote" || i.mode === "review")
+  if (i.mode === "vote" || i.mode === "review" || i.mode === "discover")
     return { min: research + i.seats, max: research + i.seats };
   if (i.mode === "debate") {
     // Два участника × раунды + судьи (остальные места), на каждый прогон; + выделение вариантов.

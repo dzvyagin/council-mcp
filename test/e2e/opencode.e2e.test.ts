@@ -130,7 +130,10 @@ describe.runIf(enabled && opencode)("e2e: debate и review через насто
 
   beforeAll(async () => {
     workspace = mkdtempSync(join(tmpdir(), "council-e2e-dr-"));
-    writeFileSync(join(workspace, "README.md"), "# demo\nВнутренние сервисы общаются по protobuf.\n");
+    writeFileSync(
+      join(workspace, "README.md"),
+      "# demo\nВнутренние сервисы общаются по protobuf.\n",
+    );
     await new Promise<void>((r) => provider.server.listen(0, "127.0.0.1", r));
     const { port } = provider.server.address() as AddressInfo;
     config = loadConfig(
@@ -157,14 +160,21 @@ describe.runIf(enabled && opencode)("e2e: debate и review через насто
   };
 
   it("debate со swap_sides: судья выбирает gRPC в обоих прогонах", async () => {
-    const r = await run({ mode: "debate", question: "REST или gRPC?", options: ["REST", "gRPC"], swapSides: true, maxRounds: 1 });
+    const r = await run({
+      mode: "debate",
+      question: "REST или gRPC?",
+      options: ["REST", "gRPC"],
+      swapSides: true,
+      maxRounds: 1,
+    });
     expect(r.status).toBe("converged");
     expect(r.decision).toBe("gRPC");
     expect(r.debate?.passes).toHaveLength(2);
   }, 300_000);
 
   it("review диффа с заложенной SQL-инъекцией — NO-GO", async () => {
-    const diff = 'diff --git a/src/api.ts b/src/api.ts\n+app.get("/payments", (req) => db.query("SELECT * FROM payments WHERE id = " + req.query.id));';
+    const diff =
+      'diff --git a/src/api.ts b/src/api.ts\n+app.get("/payments", (req) => db.query("SELECT * FROM payments WHERE id = " + req.query.id));';
     const r = await run({ mode: "review", question: "Ревью эндпоинта платежей", diff });
     expect(r.review?.verdict).toBe("no-go");
     expect(r.gate.passed).toBe(false);

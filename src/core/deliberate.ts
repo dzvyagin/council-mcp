@@ -1,4 +1,5 @@
-import { relative } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 
 import { PANEL_SIZES, STYLES, type PanelSize, type Style } from "./config.js";
 import { estimate, loadHistory, renderEstimate, type Estimate } from "./estimate.js";
@@ -15,8 +16,11 @@ import { writeAdr, type AdrData } from "./output/adr.js";
 import { consensusAdr, voteAdr } from "./output/adr-data.js";
 import { dissentText, renderReport } from "./output/report.js";
 import { TranscriptWriter } from "./output/transcript.js";
+import { recordDecision, recordIntegrity } from "./state/files.js";
+import { createWorktree, renderPlan, type Handoff } from "./workflow/worktree.js";
 import type { AnswerTool, ParticipantDriver } from "./participant.js";
-import { consensusTools } from "./protocols/consensus-schemas.js";
+import { consensusTools, TOOLS } from "./protocols/consensus-schemas.js";
+import { runDiscover } from "./protocols/discover.js";
 import { debateTools, reviewTools } from "./protocols/debate-schemas.js";
 import { runDebate } from "./protocols/debate.js";
 import { runReview } from "./protocols/review.js";
@@ -54,6 +58,10 @@ export interface DeliberateInput {
   budget?: Budget;
   /** Запускать, даже если прогноз превышает бюджет (подтверждение человека). */
   confirmBudget?: boolean;
+  /** plan-only: одобренный план (гейт пройден) — в git worktree с веткой council/<run_id>. */
+  handoff?: "none" | "plan-only";
+  /** Запуск — фаза Double Diamond. */
+  workflowId?: string;
   /** По умолчанию ADR пишется для goal decision/plan/implement и любого итога, кроме failed. */
   writeAdr?: boolean;
   adrTitle?: string;
@@ -94,7 +102,7 @@ export class BudgetError extends Error {
   }
 }
 
-const SUPPORTED: Mode[] = ["vote", "consensus", "debate", "review"];
+const SUPPORTED: Mode[] = ["vote", "consensus", "debate", "review", "discover"];
 
 export function validate(input: DeliberateInput): void {
   if (input.question.trim().length === 0) throw new InputError("question: пустой вопрос");
@@ -110,6 +118,17 @@ export function validate(input: DeliberateInput): void {
   }
   if (input.mode === "review" && (input.diff === undefined || input.diff.trim() === "")) {
     throw new InputError("context.diff: для review нужен дифф");
+  }
+  if (input.handoff === "plan-only" && input.mode !== "consensus") {
+    throw new InputError("handoff plan-only: только для consensus");
+  }
+  if (
+    input.handoff === "plan-only" &&
+    input.goal !== undefined &&
+    input.goal !== "plan" &&
+    input.goal !== "implement"
+  ) {
+    throw new InputError("handoff plan-only: goal должен быть plan или implement");
   }
   if (input.swapSides === true && input.mode !== "debate") {
     throw new InputError("swap_sides: только для debate");
@@ -160,7 +179,15 @@ export async function planRun(
   validate(input);
   // review по умолчанию — red-team-ревью без ADR.
   const style = input.style ?? (input.mode === "review" ? "red-team" : config.defaults.style);
-  const goal = input.goal ?? (input.mode === "review" ? "review" : "decision");
+  const goal =
+    input.goal ??
+    (input.mode === "review"
+      ? "review"
+      : input.mode === "discover"
+        ? "advice"
+        : input.handoff === "plan-only"
+          ? "implement"
+          : "decision");
   const panel = input.panel ?? config.defaults.panel;
   const maxRounds = input.maxRounds ?? config.defaults.maxRounds;
   const seats = buildPanel({
@@ -210,6 +237,8 @@ function toolsFor(input: DeliberateInput): AnswerTool[] {
       return debateTools();
     case "review":
       return reviewTools();
+    case "discover":
+      return [TOOLS.research];
     case "consensus":
       return consensusTools();
   }
@@ -229,7 +258,13 @@ interface ProtocolResult {
   veto?: { persona: string; reason: string };
   /** Явный итог гейта (review: go/no-go), иначе — по статусу и score. */
   passed?: boolean;
-  extra?: Pick<DeliberationResult, "review" | "debate">;
+  /** План работ для handoff (consensus с goal plan/implement). */
+  plan?: {
+    steps: { step: string; details: string; files: string[] }[];
+    risks: { risk: string; severity: string }[];
+    confirmation?: string;
+  };
+  extra?: Pick<DeliberationResult, "review" | "debate" | "discover">;
   adr: (base: AdrBase, summaries: ParticipantSummary[]) => AdrData;
 }
 
@@ -279,6 +314,7 @@ async function runProtocol(
 
   if (input.mode === "debate") return debateResult(input, session, config, plan);
   if (input.mode === "review") return reviewResult(input, session, config);
+  if (input.mode === "discover") return discoverResult(input, session);
 
   const outcome = await runConsensus(
     session,
@@ -322,6 +358,15 @@ async function runProtocol(
     openQuestions: outcome.synthesis?.open_questions ?? [],
     votes,
     warnings,
+    ...(outcome.synthesis && {
+      plan: {
+        steps: outcome.synthesis.plan ?? [],
+        risks: outcome.synthesis.risks,
+        ...(outcome.synthesis.confirmation !== undefined && {
+          confirmation: outcome.synthesis.confirmation,
+        }),
+      },
+    }),
     adr: (base, summaries) => consensusAdr(base, outcome, summaries),
   };
 }
@@ -373,6 +418,62 @@ async function debateResult(
       },
     },
     adr: (base, summaries) => debateAdr(base, o, summaries),
+  };
+}
+
+async function discoverResult(
+  input: DeliberateInput,
+  session: CouncilSession,
+): Promise<ProtocolResult> {
+  const o = await runDiscover(session, {
+    question: input.question,
+    ...(input.notes !== undefined && { notes: input.notes }),
+    ...(input.files && { files: input.files }),
+    ...(input.diff !== undefined && { diff: input.diff }),
+    maxBytes: input.maxBytes ?? DEFAULT_MAX_BYTES,
+  });
+  const optionKeys = o.options.map((x) => x.key);
+  const decision =
+    o.status === "failed" || o.status === "quorum_failed"
+      ? ""
+      : `Фактов: ${String(o.findings.length)} · варианты: ${optionKeys.slice(0, 5).join(", ") || "—"} · неизвестно: ${String(o.unknowns.length)}`;
+  return {
+    status: o.status,
+    decision,
+    score: o.quorum.answered / Math.max(1, session.seats.length),
+    threshold: o.quorum.needed / Math.max(1, session.seats.length),
+    passed: o.quorum.met,
+    openQuestions: o.unknowns,
+    votes: [...o.research.entries()].map(([alias, r]) => ({
+      alias,
+      choice: r.options[0]?.key ?? "—",
+      confidence: 1,
+      rationale: r.findings[0]?.fact ?? "",
+    })),
+    warnings: o.warnings,
+    extra: {
+      discover: {
+        findings: o.findings.slice(0, 30),
+        options: o.options,
+        constraints: o.constraints,
+        unknowns: o.unknowns,
+      },
+    },
+    adr: (base) => ({
+      ...base,
+      decision,
+      options: o.options.map((x) => ({
+        key: x.key,
+        summary: x.summary,
+        supporters: x.by,
+        pros: [],
+        cons: [],
+      })),
+      rejected: [],
+      risks: [],
+      openQuestions: o.unknowns,
+      participants: [],
+    }),
   };
 }
 
@@ -550,6 +651,50 @@ export async function deliberate(
       }
     }
 
+    // Handoff: одобренный план и копия ADR — в отдельный worktree, основная копия не меняется.
+    let handoff: Handoff | undefined;
+    if (artifacts && input.handoff === "plan-only") {
+      if (!passed) {
+        warnings.push("план не передан в worktree: гейт не пройден");
+      } else {
+        try {
+          const adrAbs = adrPath !== undefined ? join(config.workspace, adrPath) : undefined;
+          const files = [
+            {
+              path: "PLAN.md",
+              content: redactor.text(
+                renderPlan({
+                  title: (input.adrTitle ?? safeInput.question).slice(0, ADR_TITLE_MAX),
+                  decision: p.decision,
+                  runId: deps.runId,
+                  ...(adrPath !== undefined && { adrPath }),
+                  plan: p.plan?.steps ?? [],
+                  risks: p.plan?.risks ?? [],
+                  ...(p.plan?.confirmation !== undefined && { confirmation: p.plan.confirmation }),
+                }),
+              ),
+            },
+            ...(adrAbs !== undefined && adrPath !== undefined
+              ? [
+                  {
+                    path: relative(config.workspace, adrAbs),
+                    content: await readFile(adrAbs, "utf8"),
+                  },
+                ]
+              : []),
+          ];
+          handoff = await createWorktree(
+            config.workspace,
+            config.paths.stateDir,
+            deps.runId,
+            files,
+          );
+        } catch (e) {
+          warnings.push(`план не передан в worktree: ${(e as Error).message}`);
+        }
+      }
+    }
+
     const result: Omit<DeliberationResult, "report"> = redactor.deep({
       run_id: deps.runId,
       mode: input.mode,
@@ -564,6 +709,11 @@ export async function deliberate(
       ...p.extra,
       warnings,
       ...(adrPath !== undefined && { adr_path: adrPath }),
+      ...(handoff && {
+        plan_path: rel(handoff.planPath),
+        worktree_path: rel(handoff.worktreePath),
+        branch: handoff.branch,
+      }),
       transcript_path: rel(transcript.path),
       usage: toUsageSummary(session.usage, now() - started),
     });
@@ -580,6 +730,26 @@ export async function deliberate(
       });
       const failure = await transcript.flush();
       if (failure) result.warnings.push(`транскрипт записан не полностью: ${failure.message}`);
+      try {
+        await recordDecision(config.paths.stateDir, {
+          run_id: deps.runId,
+          date: new Date(now()).toISOString(),
+          mode: input.mode,
+          question: safeInput.question.slice(0, 200),
+          status,
+          score,
+          gate_passed: passed,
+          ...(adrPath !== undefined && { adr_path: adrPath }),
+          ...(input.workflowId !== undefined && { workflow_id: input.workflowId }),
+        });
+        await recordIntegrity(config.paths.stateDir, config.workspace, [
+          transcript.path,
+          ...(adrPath !== undefined ? [join(config.workspace, adrPath)] : []),
+          ...(handoff ? [handoff.planPath] : []),
+        ]);
+      } catch (e) {
+        result.warnings.push(`служебные файлы .council не обновлены: ${(e as Error).message}`);
+      }
     }
     return { ...result, report: renderReport(result) };
   } finally {

@@ -131,12 +131,14 @@ describe("MCP-сервер council", () => {
       "council_get_run",
       "council_info",
       "council_wait",
+      "council_workflow",
     ]);
     const prompts = (await s.rpc("prompts/list")).result.prompts as { name: string }[];
     expect(prompts.map((p) => p.name).sort()).toEqual([
       "costs",
       "council",
       "debate",
+      "embrace",
       "review",
       "vote",
     ]);

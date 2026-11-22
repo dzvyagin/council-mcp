@@ -71,7 +71,21 @@ export function answerFor(tool: string, task: string, defaults: { vote?: unknown
         rejected_options: [{ key: "shard-by-tenant", why: "избыточно" }],
         risks: [{ risk: "горячая партиция", severity: "minor" }],
         open_questions: ["срок хранения?"],
+        plan: [
+          {
+            step: "Миграция партиций",
+            details: "декларативно по месяцам",
+            files: ["db/migrations/0042.sql"],
+          },
+        ],
         confidence: 0.85,
+      };
+    case "submit_research":
+      return {
+        findings: [{ fact: "сервисы общаются по protobuf", source: "README.md:2" }],
+        constraints: ["PostgreSQL 16"],
+        options: [{ key: KEY, summary: "по месяцам" }],
+        unknowns: ["срок хранения"],
       };
     case "submit_grouping": {
       const keys = [...task.matchAll(/^- ([a-z0-9-]+):/gm)].map((m) => m[1]);

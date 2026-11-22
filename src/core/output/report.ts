@@ -39,7 +39,13 @@ export function renderReport(r: Omit<DeliberationResult, "report">): string {
   ];
   if (r.gate.veto) lines.push(`Вето (${r.gate.veto.persona}): ${clip(r.gate.veto.reason, 200)}`);
   if (r.dissent) lines.push(`Особое мнение: ${clip(r.dissent, 400)}`);
-  if (r.debate) {
+  if (r.discover) {
+    const d = r.discover;
+    lines.push(
+      `Находки: ${String(d.findings.length)} · варианты: ${d.options.map((o) => `${o.key} (${String(o.by.length)})`).join(", ") || "—"} · неизвестно: ${String(d.unknowns.length)}`,
+    );
+    for (const f of d.findings.slice(0, 3)) lines.push(`- ${clip(f.fact, 140)} (${f.source})`);
+  } else if (r.debate) {
     const d = r.debate;
     lines.push(`Варианты: 1) ${clip(d.options[0], 80)} · 2) ${clip(d.options[1], 80)}`);
     if (d.criteria.length > 0) {
@@ -76,6 +82,25 @@ export function renderReport(r: Omit<DeliberationResult, "report">): string {
   lines.push(
     `Расход: ${r.usage.calls} ${plural(r.usage.calls, ["вызов", "вызова", "вызовов"])} · ${formatTokens(r.usage.prompt_tokens + r.usage.completion_tokens)} токенов · ${formatDuration(r.usage.duration_s * 1000)}`,
   );
+  if (r.worktree_path !== undefined) {
+    lines.push(
+      `Handoff: ${r.plan_path ?? "PLAN.md"} · ветка ${r.branch ?? "?"} · worktree ${r.worktree_path}`,
+    );
+  }
+  if (r.workflow) {
+    const w = r.workflow;
+    const next = {
+      await_user: "ждёт подтверждения пользователя",
+      continue: "можно продолжать",
+      gate_failed: "остановлен: гейт не пройден",
+      done: "процесс завершён",
+    }[w.next];
+    lines.push(
+      `Double Diamond ${w.id} · фаза ${w.phase}: гейт ${w.gate.passed ? "✓" : "✗"} ${w.gate.reason}`,
+    );
+    lines.push(`Дальше: ${w.current_phase === "done" ? "—" : w.current_phase} · ${next}`);
+    for (const o of w.options) lines.push(`  · ${o}`);
+  }
   lines.push(`Транскрипт: ${r.transcript_path}`);
   return lines.join("\n");
 }

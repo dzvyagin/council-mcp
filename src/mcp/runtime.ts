@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
 import type { Logger } from "pino";
 
@@ -9,7 +9,15 @@ import { renderEstimate } from "../core/estimate.js";
 import type { CouncilEvent } from "../core/events.js";
 import { defaultRunId, JobRunner, type JobSnapshot } from "../core/jobs.js";
 import type { ParticipantDriver } from "../core/participant.js";
+import { renderReport } from "../core/output/report.js";
 import type { DeliberationResult } from "../core/types.js";
+import {
+  WorkflowError,
+  WorkflowMachine,
+  type PhaseInput,
+  type PhaseRunner,
+} from "../core/workflow/machine.js";
+import type { WorkflowState } from "../core/workflow/state.js";
 
 /**
  * Состояние MCP-сервера: конфиг (или ошибка конфига — сервер всё равно стартует, чтобы агент
@@ -94,6 +102,74 @@ export class CouncilRuntime {
       } finally {
         await driver.dispose().catch(() => undefined);
       }
+    });
+  }
+
+  private machines = new Map<string, WorkflowMachine>();
+
+  machine(config: CouncilConfig): WorkflowMachine {
+    let m = this.machines.get(config.paths.stateDir);
+    if (!m) {
+      m = new WorkflowMachine({ config, ...(this.options.now && { now: this.options.now }) });
+      this.machines.set(config.paths.stateDir, m);
+    }
+    return m;
+  }
+
+  /** Состояние процесса с восстановлением фазы, прерванной перезапуском сервера. */
+  async workflowState(config: CouncilConfig, id?: string): Promise<WorkflowState> {
+    const m = this.machine(config);
+    return m.recover(await m.get(id), (runId) => this.jobs.snapshot(runId)?.status === "running");
+  }
+
+  /**
+   * Прогнать текущую фазу процесса в фоне (как обычный запуск — ждать через council_wait).
+   * Участники develop/deliver читают код в worktree процесса.
+   */
+  async startPhase(
+    config: CouncilConfig,
+    id: string | undefined,
+    input: PhaseInput,
+  ): Promise<string> {
+    const machine = this.machine(config);
+    const state = await this.workflowState(config, id);
+    if (state.status === "running") throw new WorkflowError(`фаза ${state.phase} уже идёт`);
+    if (state.status === "aborted" || state.status === "done")
+      throw new WorkflowError(`процесс ${state.id}: ${state.status}`);
+    // Проверка входа фазы до старта задачи (например, нет диффа для develop).
+    machine.preflight(state, input);
+    return this.jobs.start(async ({ runId, signal, emit }) => {
+      const runner: PhaseRunner = async (deliberation, workspace) => {
+        const driver = this.options.makeDriver({ ...config, workspace });
+        try {
+          return await deliberate(deliberation, {
+            config,
+            driver,
+            runId,
+            emit,
+            signal,
+            ...(this.options.now && { now: this.options.now }),
+          });
+        } finally {
+          await driver.dispose().catch(() => undefined);
+        }
+      };
+      const ar = await machine.advance(state.id, input, runner);
+      if (!ar.result) throw new WorkflowError("фаза завершилась без запуска совета");
+      const result: Omit<DeliberationResult, "report"> = {
+        ...ar.result,
+        workflow: {
+          id: ar.state.id,
+          phase: ar.phase,
+          gate: ar.gate,
+          next: ar.next,
+          options: ar.options,
+          state_path: relative(config.workspace, join(config.paths.stateDir, "STATE.md")),
+          status: ar.state.status,
+          current_phase: ar.state.phase,
+        },
+      };
+      return { ...result, report: renderReport(result) };
     });
   }
 

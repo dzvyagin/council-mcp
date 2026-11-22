@@ -10,7 +10,7 @@ export type RunStatus =
   | "partial"
   | "failed";
 
-export type Mode = "consensus" | "debate" | "vote" | "review";
+export type Mode = "consensus" | "debate" | "vote" | "review" | "discover";
 
 export const GOALS = ["advice", "decision", "plan", "implement", "review"] as const;
 export type Goal = (typeof GOALS)[number];
@@ -75,8 +75,30 @@ export interface DeliberationResult {
     criteria: { criterion: string; first: number; second: number }[];
     passes: { first: string; second: string; winner?: string; confidence: number }[];
   };
+  /** discover: находки, варианты, ограничения и неизвестные. */
+  discover?: {
+    findings: { fact: string; source: string; by: string[] }[];
+    options: { key: string; summary: string; by: string[] }[];
+    constraints: string[];
+    unknowns: string[];
+  };
+  /** Запуск — фаза Double Diamond: итог гейта и следующий шаг. */
+  workflow?: {
+    id: string;
+    phase: string;
+    gate: { passed: boolean; reason: string };
+    next: "await_user" | "continue" | "gate_failed" | "done";
+    options: string[];
+    state_path: string;
+    status: string;
+    current_phase: string;
+  };
   /** Пути относительно COUNCIL_WORKSPACE. */
   adr_path?: string;
+  /** handoff plan-only: PLAN.md и git worktree с веткой council/<run_id>. */
+  plan_path?: string;
+  worktree_path?: string;
+  branch?: string;
   transcript_path: string;
   usage: UsageSummary;
 }
