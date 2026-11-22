@@ -267,3 +267,18 @@ E2E с настоящим opencode 2.3.2 (фейковый провайдер): 
 - Score debate = уверенность судей в вердикте (средняя по прогонам), гейт — ≥ `majorityThreshold` (0,7).
 - `max_rounds` для debate — число раундов реплик.
 - Дифф для review передаёт хост (команда `/council-review` получает его через git); сам council команд не запускает.
+
+### Фаза 7 — готово
+
+Сделано: режим `discover` (независимые исследования, объединение находок и вариантов, гейт — кворум); машина Double Diamond (`src/core/workflow/machine.ts`) — фазы, гейты (discover: кворум; define: score ≥ порога и нет вето; develop: доля pass ≥ порога; deliver: GO и нет critical), autonomy (supervised → `await_user`, semi/auto → `continue`), провал гейта с вариантами `retry`/`back`/`override_reason`/`abort`, восстановление «зависшей» фазы после перезапуска; состояние (`.council/workflows/<id>.json` — источник правды, `.council/STATE.md` — сводка, `.council/decisions.json`, `.council/integrity.json` с SHA-256 ADR, транскриптов и PLAN.md); handoff `plan-only` (`src/core/workflow/worktree.ts`): git worktree `.council/worktrees/<run_id>` с веткой `council/<run_id>`, PLAN.md и копией ADR — только если гейт пройден; develop/deliver ревьюят код в worktree (участники запускаются с cwd worktree). MCP: `council_workflow` (start, status, advance, retry, back, abort), `mode: discover` и `handoff` у `council_deliberate`, prompt `embrace`. opencode: primary-агент `conductor`, команды `/council-embrace`, `/council-discover`, `/council-define`, `/council-develop`, `/council-deliver`, `/council-status`.
+
+Проверено: юнит-тесты машины (сквозной supervised, semi, провал гейта с причиной, retry, вето, override, back, abort, восстановление после перезапуска), worktree на настоящем git, handoff, decisions/integrity, MCP-сценарий с «перезапуском» сервера (status восстанавливает фазу и гейты с диска); e2e на настоящем opencode — полный цикл discover → define (worktree, PLAN.md) → develop → deliver.
+
+Отклонения:
+
+- Действия `back` и `advance` с `override_reason` добавлены к контракту (`start | status | advance | retry | abort`) — это «вернуться на шаг назад» и «принять решение вручную» из плана.
+- Источник правды — `.council/workflows/<id>.json`; `STATE.md` пересобирается из него (человекочитаемый), восстановление после перезапуска — из JSON.
+- Worktree — внутри `.council/worktrees/` (исключён из git); ADR пишется и в основную копию (его утверждает человек), и копией в ветку.
+- Отдельные фазы (`/council-discover` и др.) — это `council_deliberate` с соответствующим режимом, без процесса.
+- Код в develop пишет хост-агент: «сквозной прогон в supervised на учебной задаче» с живым агентом и интерфейсом opencode не проводился — проверено e2e с имитацией хоста.
+- Найдено и исправлено: worktree создавал `.council/` без `.council/.gitignore`.
