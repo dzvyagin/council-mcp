@@ -429,6 +429,7 @@ export async function deliberate(
         gate,
         adr_path: adrPath,
         usage: result.usage,
+        result: { ...result, report: renderReport(result) },
       });
       const failure = await transcript.flush();
       if (failure) result.warnings.push(`транскрипт записан не полностью: ${failure.message}`);

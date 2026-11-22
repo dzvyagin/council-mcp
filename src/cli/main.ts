@@ -47,6 +47,8 @@ const HELP = `council — совет моделей для архитектур�
               [--style balanced|adversarial|red-team|executive|implementation] [--research-first]
               [--max-rounds N] [--diff-file <путь>] [--budget-calls N] [--budget-tokens N]
               [--confirm-budget] [--dry-run] [--no-adr] [--adr-title "…"] [--json]
+  council mcp [--http [--host 127.0.0.1] [--port 8765]] [--wait-s 45]
+                      MCP-сервер (stdio по умолчанию; логи в stderr)
   council doctor      проверить конфиг, эндпоинт, модели и агента-участника
   council info        показать конфигурацию (без секретов)
   council help        эта справка

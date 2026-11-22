@@ -31,6 +31,8 @@ export class FakeDriver implements ParticipantDriver {
   constructor(
     private readonly script: FakeScript,
     private readonly failOpen: Set<string> = new Set(),
+    /** Задержка каждого ответа, мс (проверка асинхронного ожидания). */
+    private readonly delayMs = 0,
   ) {}
 
   open(spec: ParticipantSpec): Promise<Participant> {
@@ -39,51 +41,54 @@ export class FakeDriver implements ParticipantDriver {
     this.opened++;
     const prompts = this.prompts;
     const script = this.script;
+    const delay = this.delayMs;
     const onClose = () => {
       this.closed++;
     };
     const participant: Participant = {
       alias: spec.alias,
-      ask<T>(req: AskRequest<T>): Promise<AskResult<T>> {
-        prompts.push({
-          modelId: spec.model.id,
-          alias: spec.alias,
-          round: req.round,
-          prompt: req.prompt,
-        });
-        const queue = script[spec.model.id]?.[req.round] ?? [];
-        const reply = queue.shift() ?? { error: "no_answer" };
-        const usage = { ...emptyUsage(), calls: 1, inputTokens: 100, outputTokens: 20 };
-        if ("throws" in reply) return Promise.reject(new Error(reply.throws));
-        if ("error" in reply) {
-          return Promise.resolve({
-            ok: false,
-            error: new ParticipantError(reply.error, reply.error),
-            usage,
-            transcript: "",
-            durationMs: 5,
-          });
-        }
-        const raw =
-          "fn" in reply ? reply.fn({ alias: spec.alias, prompt: req.prompt }) : reply.value;
-        const parsed = req.tool.schema.safeParse(raw);
-        if (!parsed.success)
-          throw new Error(`фейк: невалидный ответ ${JSON.stringify(raw)}: ${parsed.error.message}`);
-        const problem = req.validate?.(parsed.data);
-        if (problem !== undefined)
-          throw new Error(`фейк: ответ нарушает правила раунда: ${problem}`);
-        return Promise.resolve({
-          ok: true,
-          value: parsed.data,
-          usage,
-          transcript: "",
-          durationMs: 5,
-        });
+      async ask<T>(req: AskRequest<T>): Promise<AskResult<T>> {
+        if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+        return answer(req);
       },
       close() {
         onClose();
         return Promise.resolve();
       },
+    };
+    const answer = <T>(req: AskRequest<T>): Promise<AskResult<T>> => {
+      prompts.push({
+        modelId: spec.model.id,
+        alias: spec.alias,
+        round: req.round,
+        prompt: req.prompt,
+      });
+      const queue = script[spec.model.id]?.[req.round] ?? [];
+      const reply = queue.shift() ?? { error: "no_answer" };
+      const usage = { ...emptyUsage(), calls: 1, inputTokens: 100, outputTokens: 20 };
+      if ("throws" in reply) return Promise.reject(new Error(reply.throws));
+      if ("error" in reply) {
+        return Promise.resolve({
+          ok: false,
+          error: new ParticipantError(reply.error, reply.error),
+          usage,
+          transcript: "",
+          durationMs: 5,
+        });
+      }
+      const raw = "fn" in reply ? reply.fn({ alias: spec.alias, prompt: req.prompt }) : reply.value;
+      const parsed = req.tool.schema.safeParse(raw);
+      if (!parsed.success)
+        throw new Error(`фейк: невалидный ответ ${JSON.stringify(raw)}: ${parsed.error.message}`);
+      const problem = req.validate?.(parsed.data);
+      if (problem !== undefined) throw new Error(`фейк: ответ нарушает правила раунда: ${problem}`);
+      return Promise.resolve({
+        ok: true,
+        value: parsed.data,
+        usage,
+        transcript: "",
+        durationMs: 5,
+      });
     };
     return Promise.resolve(participant);
   }

@@ -11,5 +11,12 @@ export default defineConfig({
   splitting: false,
   sourcemap: false,
   clean: true,
-  banner: { js: "#!/usr/bin/env node" },
+  // CJS-зависимости (pino) зовут require(): в ESM-бандле даём им настоящий require.
+  banner: {
+    js: [
+      "#!/usr/bin/env node",
+      'import { createRequire as __councilCreateRequire } from "node:module";',
+      "const require = __councilCreateRequire(import.meta.url);",
+    ].join("\n"),
+  },
 });

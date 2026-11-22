@@ -1,0 +1,148 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import type { Logger } from "pino";
+
+import { ConfigError, loadConfig, type ConfigDeps, type CouncilConfig } from "../core/config.js";
+import { BudgetError, deliberate, planRun, type DeliberateInput } from "../core/deliberate.js";
+import { renderEstimate } from "../core/estimate.js";
+import type { CouncilEvent } from "../core/events.js";
+import { defaultRunId, JobRunner, type JobSnapshot } from "../core/jobs.js";
+import type { ParticipantDriver } from "../core/participant.js";
+import type { DeliberationResult } from "../core/types.js";
+
+/**
+ * Состояние MCP-сервера: конфиг (или ошибка конфига — сервер всё равно стартует, чтобы агент
+ * мог показать пользователю, чего не хватает), запуски и подписки на их прогресс.
+ */
+
+export interface RuntimeOptions {
+  configDeps: () => ConfigDeps;
+  makeDriver: (config: CouncilConfig) => ParticipantDriver;
+  logger: Logger;
+  now?: () => number;
+  newRunId?: () => string;
+}
+
+export type ConfigState = { ok: true; config: CouncilConfig } | { ok: false; error: string };
+
+type Listener = (event: CouncilEvent) => void;
+
+export class CouncilRuntime {
+  readonly jobs: JobRunner<DeliberationResult>;
+  private readonly listeners = new Map<string, Set<Listener>>();
+  private state: ConfigState | undefined;
+
+  constructor(private readonly options: RuntimeOptions) {
+    this.jobs = new JobRunner<DeliberationResult>({
+      ...(options.now && { now: options.now }),
+      newRunId: options.newRunId ?? (() => defaultRunId(new Date((options.now ?? Date.now)()))),
+      onEvent: (runId, event) => {
+        this.options.logger.debug({ runId, event }, "council event");
+        for (const l of this.listeners.get(runId) ?? []) l(event);
+      },
+    });
+  }
+
+  get logger(): Logger {
+    return this.options.logger;
+  }
+
+  /** Конфиг читается при первом обращении и перечитывается, пока он с ошибкой. */
+  config(): ConfigState {
+    if (this.state?.ok) return this.state;
+    try {
+      this.state = { ok: true, config: loadConfig(this.options.configDeps()) };
+    } catch (e) {
+      if (!(e instanceof ConfigError)) throw e;
+      this.state = { ok: false, error: e.message };
+    }
+    return this.state;
+  }
+
+  /** Запускает обсуждение в фоне; ошибки входа и бюджета бросаются сразу, до старта. */
+  async start(input: DeliberateInput, config: CouncilConfig): Promise<string> {
+    // Проверка входа и бюджета до создания задачи — чтобы хост получил ошибку сразу.
+    const plan = await planRun(input, config, "budget-check");
+    if (plan.overBudget.length > 0 && input.confirmBudget !== true) {
+      throw new BudgetError(
+        `прогноз превышает бюджет: ${plan.overBudget.join("; ")}. ${renderEstimate(plan.estimate)}. Спросите пользователя и повторите с confirm_budget: true или уменьшите panel/max_rounds.`,
+        plan.estimate,
+      );
+    }
+    // Агент-участник ищется до старта: «opencode не найден» — ошибка вызова, а не упавший запуск.
+    const driver = this.options.makeDriver(config);
+    return this.jobs.start(async ({ runId, signal, emit }) => {
+      this.options.logger.info(
+        { runId, mode: input.mode, driver: driver.name },
+        "council run started",
+      );
+      try {
+        const result = await deliberate(input, {
+          config,
+          driver,
+          runId,
+          emit,
+          signal,
+          ...(this.options.now && { now: this.options.now }),
+        });
+        this.options.logger.info(
+          { runId, status: result.status, usage: result.usage },
+          "council run finished",
+        );
+        return result;
+      } finally {
+        await driver.dispose().catch(() => undefined);
+      }
+    });
+  }
+
+  subscribe(runId: string, listener: Listener): () => void {
+    const set = this.listeners.get(runId) ?? new Set<Listener>();
+    set.add(listener);
+    this.listeners.set(runId, set);
+    return () => {
+      set.delete(listener);
+      if (set.size === 0) this.listeners.delete(runId);
+    };
+  }
+
+  wait(runId: string, waitMs: number): Promise<JobSnapshot<DeliberationResult> | undefined> {
+    return this.jobs.wait(runId, waitMs);
+  }
+
+  /** Итог прошлого запуска: из памяти или из транскрипта (переживает перезапуск сервера). */
+  async getRun(
+    runId: string,
+    config: CouncilConfig,
+  ): Promise<JobSnapshot<DeliberationResult> | undefined> {
+    const live = this.jobs.snapshot(runId);
+    if (live) return live;
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(runId)) return undefined;
+    let text: string;
+    try {
+      text = await readFile(join(config.paths.stateDir, "runs", `${runId}.jsonl`), "utf8");
+    } catch {
+      return undefined;
+    }
+    const last = text.trim().split("\n").at(-1);
+    try {
+      const entry = JSON.parse(last ?? "") as { type?: string; result?: DeliberationResult };
+      if (entry.type === "run_finished" && entry.result) {
+        return { runId, status: "done", progress: "", result: entry.result };
+      }
+    } catch {
+      // транскрипт оборван
+    }
+    return {
+      runId,
+      status: "failed",
+      progress: "",
+      error: "запуск не завершён: в транскрипте нет итога",
+    };
+  }
+
+  async shutdown(): Promise<void> {
+    await this.jobs.shutdown();
+  }
+}

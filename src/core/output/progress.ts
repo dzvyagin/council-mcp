@@ -21,8 +21,12 @@ export class ProgressTracker {
   private status: string | undefined;
   private readonly seats = new Map<string, SeatState>();
 
-  constructor(private readonly now: () => number = Date.now) {
+  constructor(
+    private readonly now: () => number = Date.now,
+    runId = "",
+  ) {
     this.startedAt = now();
+    this.runId = runId;
   }
 
   apply(event: CouncilEvent): void {
@@ -57,6 +61,9 @@ export class ProgressTracker {
 
   render(): string {
     const t = this.now();
+    if (this.mode === "") {
+      return `🏛 Council · подготовка запуска (панель, прогноз) · run ${this.runId} · ${formatDuration(t - this.startedAt)}`;
+    }
     const head = [
       `🏛 Council · ${this.mode} · участников ${this.seats.size}`,
       `run ${this.runId}`,

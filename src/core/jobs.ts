@@ -69,7 +69,7 @@ export class JobRunner<R> {
     while (this.jobs.has(runId)) runId = this.newRunId();
 
     const controller = new AbortController();
-    const tracker = new ProgressTracker(this.now);
+    const tracker = new ProgressTracker(this.now, runId);
     const job: Job<R> = {
       runId,
       status: "running",
