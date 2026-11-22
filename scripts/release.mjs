@@ -87,7 +87,7 @@ if (tag) {
     writeFileSync(join(wt, "package.json"), releaseManifest());
     rmSync(join(wt, "package-lock.json"), { force: true });
     git(["add", "-A", "-f", "dist", "package.json", "package-lock.json"], wt);
-    git([...commitEnv, "commit", "-q", "-m", `release ${tag}`], wt);
+    git(["commit", "-q", "-m", `release ${tag}`], wt);
     git(["tag", "-a", tag, "-m", `council ${tag}`], wt);
   } finally {
     git(["worktree", "remove", "--force", wt]);
