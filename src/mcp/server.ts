@@ -579,8 +579,8 @@ ${renderState(state, decisions)}`),
 
 /**
  * MCP prompts как слэш-команды (Claude Code, Gemini CLI, opencode — `/council:<имя>`).
- * opencode делит текст команды по пробелам по аргументам: вопрос с пробелами — в кавычках
- * (или используйте файловые команды из integrations/opencode — они принимают весь текст).
+ * opencode делит текст команды по пробелам по аргументам: вопрос с пробелами — в кавычках.
+ * Обычно команды не нужны: с плагином opencode агент сам вызывает совет.
  */
 function registerPrompts(server: McpServer, runtime: CouncilRuntime): void {
   const request = z.object({
@@ -649,12 +649,12 @@ function registerPrompts(server: McpServer, runtime: CouncilRuntime): void {
   server.registerPrompt(
     "setup",
     {
-      title: "Совет: установка в проект",
-      description: "Команды, агенты, Skill, конфиг и .gitignore для совета",
+      title: "Совет: проверка установки",
+      description: "Проверить подключение; для Claude Code и DSH — подготовить проект",
     },
     () =>
       prompt(
-        `Подготовь проект к работе с советом: выполни в терминале \`node ${JSON.stringify(runtime.settings.bundlePath ?? "<путь к council-mcp>/dist/cli/index.js").slice(1, -1)} setup --host opencode\` в корне проекта (добавь --host claude или --host dsh, если пользователь работает в этих хостах). Покажи вывод. Затем вызови council_doctor и покажи результат; при ошибках подскажи, что исправить (переменные COUNCIL_BASE_URL, COUNCIL_API_KEY, COUNCIL_MODELS задаются в окружении, не в файлах).`,
+        `Проверь подключение совета: вызови council_doctor и покажи результат; при ошибках подскажи, что исправить (COUNCIL_BASE_URL, COUNCIL_API_KEY, COUNCIL_MODELS задаются в окружении, не в файлах). В opencode с плагином council проект готовить не нужно. Если пользователь работает в Claude Code или DeepSeek Harness, выполни в корне проекта \`node ${JSON.stringify(runtime.settings.bundlePath ?? "<путь к council-mcp>/dist/cli/index.js").slice(1, -1)} setup --host claude\` (или --host dsh) и покажи вывод.`,
       ),
   );
   server.registerPrompt(

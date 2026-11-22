@@ -8,8 +8,8 @@ import { openSummary } from "../core/state/open.js";
 import { WorkflowStore } from "../core/workflow/state.js";
 
 /**
- * Логика плагина opencode (файл плагина — тонкая обёртка над этим модулем, `dist/plugin/lib.js`):
- * защита путей, сводка активного процесса для системного промпта, подсказка роутера.
+ * Логика плагина opencode (`src/opencode/plugin.ts`): защита путей, сводка состояния совета
+ * для системного промпта, правило автозапуска и подсказка роутера.
  * Без зависимостей от MCP и ACP; читает только `council.config.json`, `docs/adr` и `.council`.
  */
 
