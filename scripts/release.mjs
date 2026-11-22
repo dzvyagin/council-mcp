@@ -71,7 +71,7 @@ function releaseManifest() {
 execFileSync("npm", ["run", "build"], { cwd: root, stdio: "inherit" });
 
 if (tag) {
-  if (git(["status", "--porcelain"]) !== "") {
+  if (git(["status", "--porcelain", "--untracked-files=no"]) !== "") {
     console.error("Рабочая копия не чистая: закоммитьте изменения перед релизом.");
     process.exit(1);
   }
