@@ -91,6 +91,9 @@ export const SynthesisSchema = z.object({
     )
     .max(12),
   open_questions: list(400),
+  confirmation: text(1_500)
+    .optional()
+    .describe("Как проверить, что решение внедрено и работает: тест, метрика, ревью"),
   dissent: text(2_000)
     .optional()
     .describe("Особое мнение меньшинства — обязательно, если решение не единогласно"),

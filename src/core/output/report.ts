@@ -42,11 +42,18 @@ export function renderReport(r: Omit<DeliberationResult, "report">): string {
       `Голоса: ${r.votes.map((v) => `${v.alias} ${clip(v.choice, 60)} ${v.confidence.toFixed(2)}`).join(" · ")}`,
     );
   }
-  if (r.open_questions.length > 0) lines.push(`Открытые вопросы: ${r.open_questions.length}`);
+  const refs = [
+    ...(r.open_questions.length > 0
+      ? [`Открытые вопросы: ${String(r.open_questions.length)}`]
+      : []),
+    ...(r.adr_path !== undefined ? [`ADR: ${r.adr_path}`] : []),
+  ];
+  if (refs.length > 0) lines.push(refs.join(" · "));
   for (const w of r.warnings) lines.push(`⚠ ${w}`);
   lines.push(
     `Расход: ${r.usage.calls} ${plural(r.usage.calls, ["вызов", "вызова", "вызовов"])} · ${formatTokens(r.usage.prompt_tokens + r.usage.completion_tokens)} токенов · ${formatDuration(r.usage.duration_s * 1000)}`,
   );
+  lines.push(`Транскрипт: ${r.transcript_path}`);
   return lines.join("\n");
 }
 

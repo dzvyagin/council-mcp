@@ -1,6 +1,11 @@
+import { mkdtempSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import type { ConfigDeps } from "../src/core/config.js";
 
-export const WS = "/work/project";
+/** Временная рабочая папка процесса тестов: артефакты (ADR, транскрипты) не попадают в систему. */
+export const WS = realpathSync(mkdtempSync(join(tmpdir(), "council-ws-")));
 
 export const baseEnv = {
   COUNCIL_BASE_URL: "https://llm.bank.local/v1",

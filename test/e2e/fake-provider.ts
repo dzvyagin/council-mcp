@@ -165,6 +165,7 @@ function nextCall(
   if (tool === undefined) return undefined; // служебный ход (например, результат субагента)
   const plan: { name: string; arguments: string }[] = [
     { name: "read", arguments: args({ path: ".env" }) },
+    { name: "read", arguments: args({ path: "local-secrets/token.txt" }) },
     ...(names.includes("subagent")
       ? [
           {

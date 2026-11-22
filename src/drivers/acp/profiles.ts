@@ -1,4 +1,4 @@
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -109,13 +109,13 @@ export const ANSWER_SERVER = "council";
  * совета; субагенту и служебным агентам — нет (ответ сдаёт только сам участник).
  * Правило deny на `execute` (Code Mode) входит в общий запрет: MCP-инструменты видны напрямую.
  */
-export function readOnlyRules(role: "participant" | "helper") {
+export function readOnlyRules(role: "participant" | "helper", ignored: string[] = []) {
   return [
     rule("*", "*", "deny"),
     rule("read", "*", "allow"),
     rule("glob", "*", "allow"),
     rule("grep", "*", "allow"),
-    ...SECRET_PATHS.map((p) => rule("read", p, "deny")),
+    ...[...SECRET_PATHS, ...ignored].map((p) => rule("read", p, "deny")),
     rule("external_directory", "*", "deny"),
     ...(role === "participant"
       ? [rule("subagent", EXPLORE_AGENT, "allow"), rule(`${ANSWER_SERVER}_*`, "*", "allow")]
@@ -123,7 +123,46 @@ export function readOnlyRules(role: "participant" | "helper") {
   ];
 }
 
+const MAX_IGNORE_RULES = 200;
+
+/**
+ * Строки корневого .gitignore → шаблоны opencode для запрета чтения (`*` совпадает и с `/`).
+ * Отрицания (`!`) не переносятся: запрет остаётся строже, чем в git. Вложенные .gitignore
+ * не учитываются; glob и grep (ripgrep) и так уважают .gitignore.
+ */
+export function gitignoreToPatterns(text: string): string[] {
+  const out: string[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#") || line.startsWith("!")) continue;
+    const dirOnly = line.endsWith("/");
+    // Ведущий «**/» — «на любой глубине», то же, что шаблон без слеша.
+    let body = line
+      .replace(/\/+$/, "")
+      .replace(/^\*\*\//, "")
+      .replace(/\*\*/g, "*");
+    const anchored = body.startsWith("/") || body.slice(0, -1).includes("/");
+    body = body.replace(/^\//, "");
+    if (!body || body === "*") continue;
+    const roots = anchored ? [body] : [body, `*/${body}`];
+    for (const r of roots) {
+      if (!dirOnly) out.push(r);
+      out.push(`${r}/*`);
+    }
+  }
+  return [...new Set(out)].slice(0, MAX_IGNORE_RULES);
+}
+
+function readGitignore(workspace: string): string[] {
+  try {
+    return gitignoreToPatterns(readFileSync(join(workspace, ".gitignore"), "utf8"));
+  } catch {
+    return [];
+  }
+}
+
 export function opencodeConfig(model: ModelConfig, config: CouncilConfig): Record<string, unknown> {
+  const ignored = readGitignore(config.workspace);
   const modelEntry: Record<string, unknown> = {
     modelID: model.id,
     capabilities: { tools: true, input: ["text"], output: ["text"] },
@@ -147,20 +186,20 @@ export function opencodeConfig(model: ModelConfig, config: CouncilConfig): Recor
         models: { [MODEL_KEY]: modelEntry },
       },
     },
-    permissions: readOnlyRules("helper"),
+    permissions: readOnlyRules("helper", ignored),
     agents: {
       councillor: {
         mode: "primary",
         description:
           "Участник совета: исследует проект только на чтение и сдаёт ответ инструментом",
-        permissions: readOnlyRules("participant"),
+        permissions: readOnlyRules("participant", ignored),
       },
       // Генерация заголовка сессии — лишний вызов модели на каждого участника.
       title: { disabled: true },
       [EXPLORE_AGENT]: {
         mode: "subagent",
         description: "Read-only поиск и чтение кода проекта по поручению участника совета",
-        permissions: readOnlyRules("helper"),
+        permissions: readOnlyRules("helper", ignored),
       },
     },
   };

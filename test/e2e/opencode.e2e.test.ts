@@ -8,7 +8,7 @@
  * 2. «Реальный эндпоинт»: если заданы COUNCIL_BASE_URL/COUNCIL_API_KEY/COUNCIL_MODELS —
  *    голосование на настоящих моделях.
  */
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -37,6 +37,9 @@ describe.runIf(enabled && opencode)("e2e: opencode acp + фейковый про
       "# demo\nВнутренние сервисы общаются по protobuf.\n",
     );
     writeFileSync(join(workspace, ".env"), "DB_PASSWORD=hunter2\n");
+    writeFileSync(join(workspace, ".gitignore"), "local-secrets/\n");
+    mkdirSync(join(workspace, "local-secrets"));
+    writeFileSync(join(workspace, "local-secrets/token.txt"), "ignored-file-content\n");
     await new Promise<void>((r) => provider.server.listen(0, "127.0.0.1", r));
     const { port } = provider.server.address() as AddressInfo;
     config = loadConfig(
@@ -87,6 +90,7 @@ describe.runIf(enabled && opencode)("e2e: opencode acp + фейковый про
     // .env не прочитан, README прочитан.
     const results = toolResults(reqs).join("\n");
     expect(results).not.toContain("hunter2");
+    expect(results).not.toContain("ignored-file-content"); // путь из .gitignore
     expect(results).toContain("protobuf");
     // У каждого участника своя модель, и обе модели участвовали.
     expect(new Set(participant.map((q) => q.model))).toEqual(new Set(["fake-a", "fake-b"]));
@@ -113,6 +117,9 @@ describe.runIf(enabled && opencode)("e2e: opencode acp + фейковый про
       "pg-partition-by-month",
     ]);
     expect(r.participants.every((p) => p.state === "ok")).toBe(true);
+    expect(r.adr_path).toMatch(/^docs\/adr\/\d{4}-/);
+    expect(existsSync(join(workspace, r.adr_path!))).toBe(true);
+    expect(existsSync(join(workspace, r.transcript_path))).toBe(true);
     checkSandbox();
   }, 300_000);
 });

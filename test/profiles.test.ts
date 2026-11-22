@@ -5,6 +5,7 @@ import { plural } from "../src/core/output/format.js";
 import {
   baseEnv as childBaseEnv,
   EXPLORE_AGENT,
+  gitignoreToPatterns,
   opencodeProfile,
   readOnlyRules,
   resolveProfile,
@@ -171,5 +172,42 @@ describe("plural", () => {
     [22, "вызова"],
   ])("%i %s", (n, form) => {
     expect(plural(n, ["вызов", "вызова", "вызовов"])).toBe(form);
+  });
+});
+
+describe("gitignoreToPatterns", () => {
+  const patterns = gitignoreToPatterns(
+    [
+      "# comment",
+      "",
+      "node_modules/",
+      "*.log",
+      "/secrets.json",
+      "config/local/*.yml",
+      "!keep.log",
+      "**/tmp",
+      "*",
+    ].join("\n"),
+  );
+  const rules = [...readOnlyRules("participant", patterns)];
+
+  it.each([
+    ["node_modules/x/index.js", "deny"],
+    ["pkg/node_modules/a.js", "deny"],
+    ["app.log", "deny"],
+    ["logs/deep/app.log", "deny"],
+    ["keep.log", "deny"],
+    ["secrets.json", "deny"],
+    ["sub/secrets.json", "allow"],
+    ["config/local/db.yml", "deny"],
+    ["tmp/x", "deny"],
+    ["a/tmp", "deny"],
+    ["src/app.ts", "allow"],
+  ])("read %s → %s", (path, effect) => {
+    expect(decide(rules, "read", path)).toBe(effect);
+  });
+
+  it("строка «*» не запрещает весь проект", () => {
+    expect(patterns).not.toContain("*");
   });
 });

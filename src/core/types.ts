@@ -50,6 +50,9 @@ export interface DeliberationResult {
   open_questions: string[];
   votes?: VoteRecord[];
   warnings: string[];
+  /** Пути относительно COUNCIL_WORKSPACE. */
+  adr_path?: string;
+  transcript_path: string;
   usage: UsageSummary;
 }
 

@@ -1,8 +1,14 @@
+import { relative } from "node:path";
+
 import type { CouncilConfig } from "./config.js";
 import { DEFAULT_MAX_BYTES } from "./context/builder.js";
+import { Redactor } from "./context/redact.js";
 import { CouncilSession } from "./engine.js";
 import { noopSink, type EventSink } from "./events.js";
+import { writeAdr, type AdrData } from "./output/adr.js";
+import { consensusAdr, voteAdr } from "./output/adr-data.js";
 import { dissentText, renderReport } from "./output/report.js";
+import { TranscriptWriter } from "./output/transcript.js";
 import type { AnswerTool, ParticipantDriver } from "./participant.js";
 import { consensusTools } from "./protocols/consensus-schemas.js";
 import { runConsensus } from "./protocols/consensus.js";
@@ -11,6 +17,7 @@ import {
   toUsageSummary,
   type DeliberationResult,
   type Mode,
+  type ParticipantSummary,
   type RunStatus,
   type VoteRecord,
 } from "./types.js";
@@ -24,6 +31,9 @@ export interface DeliberateInput {
   diff?: string;
   maxBytes?: number;
   maxRounds?: number;
+  /** По умолчанию true: ADR пишется для любого итога, кроме failed. */
+  writeAdr?: boolean;
+  adrTitle?: string;
 }
 
 export interface DeliberateDeps {
@@ -33,6 +43,8 @@ export interface DeliberateDeps {
   emit?: EventSink;
   signal?: AbortSignal;
   now?: () => number;
+  /** false — не писать транскрипт и ADR (юнит-тесты протоколов). */
+  artifacts?: boolean;
 }
 
 export class InputError extends Error {
@@ -69,6 +81,8 @@ function toolsFor(input: DeliberateInput): AnswerTool[] {
   return input.mode === "vote" ? [voteTool(input.options)] : consensusTools();
 }
 
+type AdrBase = Parameters<typeof consensusAdr>[0];
+
 interface ProtocolResult {
   status: RunStatus;
   decision: string;
@@ -78,6 +92,7 @@ interface ProtocolResult {
   openQuestions: string[];
   votes: VoteRecord[];
   warnings: string[];
+  adr: (base: AdrBase, summaries: ParticipantSummary[]) => AdrData;
 }
 
 async function runProtocol(
@@ -112,6 +127,7 @@ async function runProtocol(
       openQuestions: [],
       votes,
       warnings,
+      adr: (base, summaries) => voteAdr(base, tally, votes, input.options, dissent, summaries),
     };
   }
 
@@ -150,8 +166,22 @@ async function runProtocol(
     openQuestions: outcome.synthesis?.open_questions ?? [],
     votes,
     warnings,
+    adr: (base, summaries) => consensusAdr(base, outcome, summaries),
   };
 }
+
+/** Маскирует секреты во входе: он уходит в промпты всех участников. */
+function redactInput(input: DeliberateInput, redactor: Redactor): DeliberateInput {
+  return {
+    ...input,
+    question: redactor.text(input.question),
+    ...(input.options && { options: input.options.map((o) => redactor.text(o)) }),
+    ...(input.notes !== undefined && { notes: redactor.text(input.notes) }),
+    ...(input.diff !== undefined && { diff: redactor.text(input.diff) }),
+  };
+}
+
+const ADR_TITLE_MAX = 100;
 
 /** Публичная точка входа ядра: одно обсуждение. */
 export async function deliberate(
@@ -159,19 +189,30 @@ export async function deliberate(
   deps: DeliberateDeps,
 ): Promise<DeliberationResult> {
   validate(input);
+  const { config } = deps;
   const now = deps.now ?? Date.now;
   const emit = deps.emit ?? noopSink;
   const signal = deps.signal ?? new AbortController().signal;
+  const artifacts = deps.artifacts ?? true;
+  const redactor = new Redactor([config.endpoint.apiKey.reveal()]);
+  const safeInput = redactInput(input, redactor);
   const started = now();
+  const rel = (path: string) => relative(config.workspace, path);
 
+  const transcript = new TranscriptWriter(config.paths.stateDir, deps.runId, redactor, now);
   const session = new CouncilSession({
     driver: deps.driver,
-    models: deps.config.models,
-    tools: toolsFor(input),
+    models: config.models,
+    tools: toolsFor(safeInput),
     seed: deps.runId,
-    roundTimeoutS: deps.config.participant.roundTimeoutS,
+    roundTimeoutS: config.participant.roundTimeoutS,
     emit,
     signal,
+    ...(artifacts && {
+      record: (entry) => {
+        transcript.write(entry);
+      },
+    }),
   });
   emit({
     type: "run_started",
@@ -179,9 +220,18 @@ export async function deliberate(
     mode: input.mode,
     aliases: session.seats.map((s) => s.alias),
   });
+  if (artifacts) {
+    transcript.write({
+      type: "run_started",
+      mode: input.mode,
+      input: safeInput,
+      seats: session.assignments,
+      driver: deps.driver.name,
+    });
+  }
 
   try {
-    const p = await runProtocol(input, session, deps.config, deps.runId);
+    const p = await runProtocol(safeInput, session, config, deps.runId);
     let status = p.status;
     const warnings = [...p.warnings];
     if (signal.aborted) {
@@ -189,21 +239,68 @@ export async function deliberate(
       warnings.unshift("запуск отменён — итог по уже полученным ответам");
     }
     const passed = (status === "converged" || status === "majority") && p.score >= p.threshold;
-    const result: Omit<DeliberationResult, "report"> = {
+    const score = Math.round(p.score * 100) / 100;
+    const gate = { threshold: p.threshold, passed };
+    const summaries = session.summaries();
+
+    let adrPath: string | undefined;
+    if (artifacts && input.writeAdr !== false && status !== "failed" && p.decision.trim() !== "") {
+      try {
+        const title = (input.adrTitle ?? safeInput.question)
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, ADR_TITLE_MAX);
+        const data = p.adr(
+          {
+            title,
+            date: new Date(now()).toISOString().slice(0, 10),
+            runId: deps.runId,
+            mode: input.mode,
+            transcript: rel(transcript.path),
+            status,
+            score,
+            gate,
+            question: safeInput.question,
+            ...(safeInput.notes !== undefined && { notes: safeInput.notes }),
+            warnings,
+          },
+          summaries,
+        );
+        adrPath = rel((await writeAdr(config.paths.adrDir, redactor.deep(data))).path);
+      } catch (e) {
+        warnings.push(`ADR не записан: ${(e as Error).message}`);
+      }
+    }
+
+    const result: Omit<DeliberationResult, "report"> = redactor.deep({
       run_id: deps.runId,
       mode: input.mode,
       status,
       decision: p.decision,
       ...(p.dissent !== undefined && { dissent: p.dissent }),
-      score: Math.round(p.score * 100) / 100,
-      gate: { threshold: p.threshold, passed },
-      participants: session.summaries(),
+      score,
+      gate,
+      participants: summaries,
       open_questions: p.openQuestions,
       votes: p.votes,
       warnings,
+      ...(adrPath !== undefined && { adr_path: adrPath }),
+      transcript_path: rel(transcript.path),
       usage: toUsageSummary(session.usage, now() - started),
-    };
+    });
     emit({ type: "run_finished", status });
+    if (artifacts) {
+      transcript.write({
+        type: "run_finished",
+        status,
+        score,
+        gate,
+        adr_path: adrPath,
+        usage: result.usage,
+      });
+      const failure = await transcript.flush();
+      if (failure) result.warnings.push(`транскрипт записан не полностью: ${failure.message}`);
+    }
     return { ...result, report: renderReport(result) };
   } finally {
     await session.close();

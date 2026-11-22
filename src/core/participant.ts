@@ -34,6 +34,8 @@ export interface AnswerTool<T = unknown> {
 export interface AskRequest<T> {
   /** Идентификатор раунда — для логов и транскрипта. */
   round: string;
+  /** Роль/персона места — только для транскрипта, участнику не передаётся отдельно. */
+  role?: string;
   prompt: string;
   tool: AnswerTool<T>;
   /**

@@ -59,6 +59,9 @@ export interface ConsensusOutcome {
   convergence?: Convergence;
   unresolved: Unresolved[];
   ratings: Map<string, number>;
+  /** Критика последней итерации: критик → отзывы (для плюсов и минусов в ADR). */
+  critiques: Map<string, Critique>;
+  roles: Map<string, string>;
   iterations: number;
   chair?: string;
   warnings: string[];
@@ -118,6 +121,7 @@ export async function runConsensus(
 
   // Раунд 1 — независимые предложения.
   let current: Map<string, Answer> = await session.askAll("propose", (seat) => ({
+    role: roleOf.get(seat.alias) ?? roleFor(0),
     tool: TOOLS.proposal,
     prompt: proposePrompt(common(seat), TOOLS.proposal.name),
   }));
@@ -138,6 +142,7 @@ export async function runConsensus(
     });
 
   let ratings = new Map<string, number>();
+  let lastCritiques = new Map<string, Critique>();
   let unresolved: Unresolved[] = [];
   let grouping: Grouping | undefined;
   let convergence: Convergence | undefined;
@@ -157,6 +162,7 @@ export async function runConsensus(
           `${options.seed}:${String(iterations)}:${seat.alias}`,
         );
         return {
+          role: roleOf.get(seat.alias) ?? roleFor(0),
           tool: TOOLS.critique,
           validate: critiqueRules(others),
           prompt: critiquePrompt(
@@ -173,6 +179,7 @@ export async function runConsensus(
       break;
     }
     ratings = bordaScores(critiques);
+    lastCritiques = critiques;
     const place = (alias: string) => {
       const sorted = [...ratings.entries()].sort((a, b) => b[1] - a[1]);
       const i = sorted.findIndex(([l]) => l === alias);
@@ -192,6 +199,7 @@ export async function runConsensus(
           c.reviews.filter((r) => r.label === seat.alias).map((review) => ({ critic, review })),
         );
         return {
+          role: roleOf.get(seat.alias) ?? roleFor(0),
           tool: TOOLS.revision,
           validate: revisionRules(
             own.decision_key,
@@ -227,6 +235,8 @@ export async function runConsensus(
       positions,
       unresolved,
       ratings,
+      critiques: lastCritiques,
+      roles: roleOf,
       iterations,
       warnings,
     };
@@ -242,6 +252,8 @@ export async function runConsensus(
       positions,
       unresolved,
       ratings,
+      critiques: lastCritiques,
+      roles: roleOf,
       iterations,
       chair: alias,
       warnings,
@@ -305,6 +317,8 @@ export async function runConsensus(
     ...(convergence && { convergence }),
     unresolved,
     ratings,
+    critiques: lastCritiques,
+    roles: roleOf,
     iterations,
     ...(chair !== undefined && { chair }),
     warnings,

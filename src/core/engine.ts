@@ -11,6 +11,7 @@ import {
   type ParticipantDriver,
   type Usage,
 } from "./participant.js";
+import { promptHash, type TranscriptEntry } from "./output/transcript.js";
 import type { ParticipantSummary, SeatAssignment, SeatState } from "./types.js";
 
 /**
@@ -38,6 +39,8 @@ export interface CouncilSessionOptions {
   signal: AbortSignal;
   /** Сколько повторов на участника в раунде (по умолчанию 1). */
   retries?: number;
+  /** Запись в транскрипт: каждая попытка ответа. */
+  record?: (entry: TranscriptEntry) => void;
 }
 
 export type RoundAnswers<T> = Map<string, T>;
@@ -145,6 +148,21 @@ export class CouncilSession {
           signal,
         });
         seat.usage = addUsage(seat.usage, result.usage);
+        this.options.record?.({
+          type: "ask",
+          round,
+          alias: seat.alias,
+          model: seat.model.id,
+          ...(request.role !== undefined && { role: request.role }),
+          attempt,
+          prompt_hash: promptHash(request.prompt),
+          usage: result.usage,
+          duration_ms: result.durationMs,
+          raw: result.transcript,
+          ...(result.ok
+            ? { parsed: result.value }
+            : { error: { kind: result.error.kind, message: result.error.message } }),
+        });
         if (result.ok) {
           emit({
             type: "participant_done",
@@ -160,6 +178,14 @@ export class CouncilSession {
       } catch (error) {
         // Участник не запустился или упал вне хода.
         reason = error instanceof Error ? error.message : String(error);
+        this.options.record?.({
+          type: "ask",
+          round,
+          alias: seat.alias,
+          model: seat.model.id,
+          attempt,
+          error: { kind: "agent_error", message: reason },
+        });
         await this.dropParticipant(seat);
       }
 
