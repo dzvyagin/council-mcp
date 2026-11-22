@@ -64,9 +64,9 @@ export class JobRunner<R> {
     this.onEvent = options.onEvent;
   }
 
-  start(task: (ctx: JobContext) => Promise<R>): string {
-    let runId = this.newRunId();
-    while (this.jobs.has(runId)) runId = this.newRunId();
+  start(task: (ctx: JobContext) => Promise<R>, fixedRunId?: string): string {
+    let runId = fixedRunId ?? this.newRunId();
+    while (fixedRunId === undefined && this.jobs.has(runId)) runId = this.newRunId();
 
     const controller = new AbortController();
     const tracker = new ProgressTracker(this.now, runId);

@@ -93,7 +93,11 @@ opencode делит текст после команды на аргументы
 
 Инструменты: `council_deliberate`, `council_workflow`, `council_wait`, `council_cancel`,
 `council_get_run`, `council_estimate`, `council_info`, `council_doctor`, `council_usage`,
-`council_route`. Вызов ждёт итога не дольше `wait_s` (по умолчанию 45 с, `COUNCIL_WAIT_S`) и
+`council_route`. Запуск идёт в отдельном рабочем процессе (`council worker`), отвязанном от
+MCP-сервера: хост может перезапустить MCP-сервер (правка конфига, перезапуск сервиса) — совет
+продолжит работу, а новый сервер отдаст итог. Состояние — `.council/jobs/<run_id>.state.json`,
+лог — `<run_id>.log`, отмена — `council_cancel` (файл-флаг); файлы старше недели удаляются.
+`COUNCIL_DETACHED=0` — запуск внутри MCP-процесса. Вызов ждёт итога не дольше `wait_s` (по умолчанию 45 с, `COUNCIL_WAIT_S`) и
 возвращает прогресс, агент продолжает через `council_wait` — таймауты хоста не мешают. Отчёт
 возвращается как `<council-output trust="untrusted">` — данные, а не инструкции.
 

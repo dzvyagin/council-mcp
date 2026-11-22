@@ -8,8 +8,9 @@ import { which } from "../drivers/acp/profiles.js";
 import { Redactor } from "../core/context/redact.js";
 import type { ParticipantDriver } from "../core/participant.js";
 import { createLogger } from "../mcp/logger.js";
-import { CouncilRuntime } from "../mcp/runtime.js";
+import { CouncilRuntime, type WorkerSpec } from "../mcp/runtime.js";
 import { serveHttp, serveStdio } from "../mcp/serve.js";
+import { spawnWorker } from "./worker.js";
 
 /**
  * `council mcp` — MCP-сервер. По умолчанию stdio; `--http` — Streamable HTTP (loopback, или
@@ -40,13 +41,21 @@ export async function runMcp(
   if (waitS !== undefined && (!Number.isInteger(waitS) || waitS < 0))
     throw new Error("--wait-s: целое число секунд");
 
+  const bundlePath = fileURLToPath(import.meta.url);
+  // Из собранного бандла запуски идут в отвязанном рабочем процессе: хост может перезапустить
+  // MCP-сервер, а совет продолжит работу. COUNCIL_DETACHED=0 — внутри процесса.
+  const detached = bundlePath.endsWith(".js") && env.COUNCIL_DETACHED !== "0";
   const runtime = new CouncilRuntime({
     configDeps: nodeConfigDeps,
     makeDriver,
     logger,
     checkAgent,
     which: (command) => which(command),
-    bundlePath: fileURLToPath(import.meta.url),
+    bundlePath,
+    ...(detached && {
+      spawnWorker: (spec: WorkerSpec, config: CouncilConfig) =>
+        spawnWorker(bundlePath, spec, config),
+    }),
   });
   const state = runtime.config();
   if (!state.ok)

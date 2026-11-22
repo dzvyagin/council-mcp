@@ -168,7 +168,12 @@ export class WorkflowMachine {
     id: string | undefined,
     input: PhaseInput,
     runner: PhaseRunner,
-    opts: { overrideReason?: string; onStart?: (state: WorkflowState) => void } = {},
+    opts: {
+      overrideReason?: string;
+      onStart?: (state: WorkflowState) => void;
+      /** run_id запуска фазы: пока он жив, recover не считает фазу прерванной. */
+      runId?: string;
+    } = {},
   ): Promise<AdvanceResult> {
     const state = await this.get(id);
     if (state.status === "aborted") throw new WorkflowError("процесс прерван");
@@ -199,7 +204,11 @@ export class WorkflowMachine {
 
     const deliberation = this.phaseInput(state, phase, input);
     state.status = "running";
-    state.phases[phase] = { status: "running", updated: this.ts() };
+    state.phases[phase] = {
+      status: "running",
+      updated: this.ts(),
+      ...(opts.runId !== undefined && { run_id: opts.runId }),
+    };
     this.note(state, phase, "run");
     await this.store.save(state);
     opts.onStart?.(state);

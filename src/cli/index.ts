@@ -6,6 +6,7 @@ import { checkAgent } from "../drivers/acp/check.js";
 import { which } from "../drivers/acp/profiles.js";
 import { main } from "./main.js";
 import { runMcp } from "./mcp.js";
+import { runWorker } from "./worker.js";
 
 const makeDriver = (config: CouncilConfig) =>
   new AcpDriver(config, {
@@ -14,7 +15,13 @@ const makeDriver = (config: CouncilConfig) =>
     },
   });
 
-if (process.argv[2] === "mcp") {
+if (process.argv[2] === "worker") {
+  process.exitCode = await runWorker(process.argv.slice(3), {
+    configDeps: nodeConfigDeps,
+    makeDriver,
+  });
+  process.exit();
+} else if (process.argv[2] === "mcp") {
   try {
     await runMcp(process.argv.slice(3), makeDriver);
   } catch (e) {

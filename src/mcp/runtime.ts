@@ -14,7 +14,10 @@ import {
 import type { Check } from "../core/doctor.js";
 import { renderEstimate } from "../core/estimate.js";
 import type { CouncilEvent } from "../core/events.js";
+import { detachedSnapshot, detachedWait, requestCancel, writeJobState } from "../core/detached.js";
+import type { EventSink } from "../core/events.js";
 import { defaultRunId, JobRunner, type JobSnapshot } from "../core/jobs.js";
+import { ensureStateDir } from "../core/state/dir.js";
 import type { ParticipantDriver } from "../core/participant.js";
 import { renderReport } from "../core/output/report.js";
 import type { DeliberationResult } from "../core/types.js";
@@ -42,6 +45,93 @@ export interface RuntimeOptions {
   bundlePath?: string;
   now?: () => number;
   newRunId?: () => string;
+  /**
+   * Запуск в отдельном рабочем процессе (`council worker`): переживает перезапуск MCP-сервера
+   * хостом. Возвращает pid. Без него запуски идут внутри процесса (тесты, dev).
+   */
+  spawnWorker?: (spec: WorkerSpec, config: CouncilConfig) => number | undefined;
+}
+
+/** Задание рабочему процессу. */
+export interface WorkerSpec {
+  runId: string;
+  kind: "deliberate" | "phase";
+  input: DeliberateInput | PhaseInput;
+  workflowId?: string;
+  /** Переопределение состава моделей на сессию (council_info models). */
+  models?: string[];
+}
+
+interface TaskContext {
+  runId: string;
+  emit: EventSink;
+  signal: AbortSignal;
+  now?: () => number;
+}
+
+/** Состав моделей поверх конфига (неизвестные — по шаблону первой модели). */
+export function applyModels(base: CouncilConfig, ids: string[] | undefined): CouncilConfig {
+  if (ids === undefined) return base;
+  const known = new Map(base.models.map((m) => [m.id, m]));
+  const template = base.models[0];
+  const models = ids.map(
+    (id) =>
+      known.get(id) ?? {
+        ...(template ?? { context: 32_000, output: 8_000, maxConcurrency: 1 }),
+        id,
+      },
+  );
+  return { ...base, models };
+}
+
+/** Одно обсуждение — общее для запуска внутри процесса и в рабочем процессе. */
+export async function runDeliberationTask(
+  input: DeliberateInput,
+  config: CouncilConfig,
+  driver: ParticipantDriver,
+  ctx: TaskContext,
+): Promise<DeliberationResult> {
+  try {
+    return await deliberate(input, {
+      config,
+      driver,
+      runId: ctx.runId,
+      emit: ctx.emit,
+      signal: ctx.signal,
+      ...(ctx.now && { now: ctx.now }),
+    });
+  } finally {
+    await driver.dispose().catch(() => undefined);
+  }
+}
+
+/** Фаза Double Diamond — общее для запуска внутри процесса и в рабочем процессе. */
+export async function runPhaseTask(
+  config: CouncilConfig,
+  machine: WorkflowMachine,
+  workflowId: string,
+  input: PhaseInput,
+  makeDriver: (config: CouncilConfig) => ParticipantDriver,
+  ctx: TaskContext,
+): Promise<DeliberationResult> {
+  const runner: PhaseRunner = (deliberation, workspace) =>
+    runDeliberationTask(deliberation, config, makeDriver({ ...config, workspace }), ctx);
+  const ar = await machine.advance(workflowId, input, runner, { runId: ctx.runId });
+  if (!ar.result) throw new WorkflowError("фаза завершилась без запуска совета");
+  const result: Omit<DeliberationResult, "report"> = {
+    ...ar.result,
+    workflow: {
+      id: ar.state.id,
+      phase: ar.phase,
+      gate: ar.gate,
+      next: ar.next,
+      options: ar.options,
+      state_path: relative(config.workspace, join(config.paths.stateDir, "STATE.md")),
+      status: ar.state.status,
+      current_phase: ar.state.phase,
+    },
+  };
+  return { ...result, report: renderReport(result) };
 }
 
 export type ConfigState = { ok: true; config: CouncilConfig } | { ok: false; error: string };
@@ -89,16 +179,7 @@ export class CouncilRuntime {
   config(): ConfigState {
     const base = this.loadBase();
     if (!base.ok || this.modelsOverride === undefined) return base;
-    const known = new Map(base.config.models.map((m) => [m.id, m]));
-    const template = base.config.models[0];
-    const models = this.modelsOverride.map(
-      (id) =>
-        known.get(id) ?? {
-          ...(template ?? { context: 32_000, output: 8_000, maxConcurrency: 1 }),
-          id,
-        },
-    );
-    return { ok: true, config: { ...base.config, models } };
+    return { ok: true, config: applyModels(base.config, this.modelsOverride) };
   }
 
   /** Конфиг читается при первом обращении и перечитывается, пока он с ошибкой. */
@@ -125,29 +206,74 @@ export class CouncilRuntime {
     }
     // Агент-участник ищется до старта: «opencode не найден» — ошибка вызова, а не упавший запуск.
     const driver = this.options.makeDriver(config);
+    if (this.options.spawnWorker) {
+      await driver.dispose().catch(() => undefined);
+      return this.spawn(config, {
+        kind: "deliberate",
+        input,
+        ...(this.modelsOverride && { models: this.modelsOverride }),
+      });
+    }
     return this.jobs.start(async ({ runId, signal, emit }) => {
       this.options.logger.info(
         { runId, mode: input.mode, driver: driver.name },
         "council run started",
       );
-      try {
-        const result = await deliberate(input, {
-          config,
-          driver,
-          runId,
-          emit,
-          signal,
-          ...(this.options.now && { now: this.options.now }),
-        });
-        this.options.logger.info(
-          { runId, status: result.status, usage: result.usage },
-          "council run finished",
-        );
-        return result;
-      } finally {
-        await driver.dispose().catch(() => undefined);
-      }
+      const result = await runDeliberationTask(input, config, driver, {
+        runId,
+        emit,
+        signal,
+        ...(this.options.now && { now: this.options.now }),
+      });
+      this.options.logger.info(
+        { runId, status: result.status, usage: result.usage },
+        "council run finished",
+      );
+      return result;
     });
+  }
+
+  /** Запуск в рабочем процессе: начальное состояние в файле, затем отвязанный процесс. */
+  private async spawn(config: CouncilConfig, spec: Omit<WorkerSpec, "runId">): Promise<string> {
+    const runId = this.newRunId();
+    await ensureStateDir(config.paths.stateDir);
+    const now = (this.options.now ?? Date.now)();
+    writeJobState(config.paths.stateDir, {
+      runId,
+      status: "running",
+      progress: `🏛 Council · запуск рабочего процесса · run ${runId}`,
+      updatedAt: now,
+    });
+    const pid = this.options.spawnWorker?.({ ...spec, runId }, config);
+    writeJobState(config.paths.stateDir, {
+      runId,
+      status: "running",
+      progress: `🏛 Council · запуск рабочего процесса · run ${runId}`,
+      ...(pid !== undefined && { pid }),
+      updatedAt: now,
+    });
+    this.options.logger.info({ runId, pid, kind: spec.kind }, "council worker started");
+    return runId;
+  }
+
+  private newRunId(): string {
+    return (
+      this.options.newRunId ?? (() => defaultRunId(new Date((this.options.now ?? Date.now)())))
+    )();
+  }
+
+  /** Снимок запуска: внутри процесса или из файла рабочего процесса. */
+  snapshot(runId: string): JobSnapshot<DeliberationResult> | undefined {
+    const live = this.jobs.snapshot(runId);
+    if (live) return live;
+    const state = this.config();
+    return state.ok ? detachedSnapshot(state.config.paths.stateDir, runId) : undefined;
+  }
+
+  cancel(runId: string): boolean {
+    if (this.jobs.cancel(runId)) return true;
+    const state = this.config();
+    return state.ok ? requestCancel(state.config.paths.stateDir, runId) : false;
   }
 
   private machines = new Map<string, WorkflowMachine>();
@@ -164,7 +290,7 @@ export class CouncilRuntime {
   /** Состояние процесса с восстановлением фазы, прерванной перезапуском сервера. */
   async workflowState(config: CouncilConfig, id?: string): Promise<WorkflowState> {
     const m = this.machine(config);
-    return m.recover(await m.get(id), (runId) => this.jobs.snapshot(runId)?.status === "running");
+    return m.recover(await m.get(id), (runId) => this.snapshot(runId)?.status === "running");
   }
 
   /**
@@ -183,39 +309,22 @@ export class CouncilRuntime {
       throw new WorkflowError(`процесс ${state.id}: ${state.status}`);
     // Проверка входа фазы до старта задачи (например, нет диффа для develop).
     machine.preflight(state, input);
-    return this.jobs.start(async ({ runId, signal, emit }) => {
-      const runner: PhaseRunner = async (deliberation, workspace) => {
-        const driver = this.options.makeDriver({ ...config, workspace });
-        try {
-          return await deliberate(deliberation, {
-            config,
-            driver,
-            runId,
-            emit,
-            signal,
-            ...(this.options.now && { now: this.options.now }),
-          });
-        } finally {
-          await driver.dispose().catch(() => undefined);
-        }
-      };
-      const ar = await machine.advance(state.id, input, runner);
-      if (!ar.result) throw new WorkflowError("фаза завершилась без запуска совета");
-      const result: Omit<DeliberationResult, "report"> = {
-        ...ar.result,
-        workflow: {
-          id: ar.state.id,
-          phase: ar.phase,
-          gate: ar.gate,
-          next: ar.next,
-          options: ar.options,
-          state_path: relative(config.workspace, join(config.paths.stateDir, "STATE.md")),
-          status: ar.state.status,
-          current_phase: ar.state.phase,
-        },
-      };
-      return { ...result, report: renderReport(result) };
-    });
+    if (this.options.spawnWorker) {
+      return this.spawn(config, {
+        kind: "phase",
+        input,
+        workflowId: state.id,
+        ...(this.modelsOverride && { models: this.modelsOverride }),
+      });
+    }
+    return this.jobs.start(({ runId, signal, emit }) =>
+      runPhaseTask(config, machine, state.id, input, this.options.makeDriver, {
+        runId,
+        emit,
+        signal,
+        ...(this.options.now && { now: this.options.now }),
+      }),
+    );
   }
 
   subscribe(runId: string, listener: Listener): () => void {
@@ -228,8 +337,30 @@ export class CouncilRuntime {
     };
   }
 
-  wait(runId: string, waitMs: number): Promise<JobSnapshot<DeliberationResult> | undefined> {
-    return this.jobs.wait(runId, waitMs);
+  /** Ждёт итога не дольше waitMs; onProgress — при каждом изменении прогресса. */
+  async wait(
+    runId: string,
+    waitMs: number,
+    onProgress?: (progress: string) => void,
+  ): Promise<JobSnapshot<DeliberationResult> | undefined> {
+    if (this.jobs.snapshot(runId)) {
+      const unsubscribe = onProgress
+        ? this.subscribe(runId, () => {
+            const s = this.jobs.snapshot(runId);
+            if (s) onProgress(s.progress);
+          })
+        : undefined;
+      try {
+        return await this.jobs.wait(runId, waitMs);
+      } finally {
+        unsubscribe?.();
+      }
+    }
+    const state = this.config();
+    if (!state.ok) return undefined;
+    return detachedWait(state.config.paths.stateDir, runId, waitMs, {
+      ...(onProgress && { onProgress }),
+    });
   }
 
   /** Итог прошлого запуска: из памяти или из транскрипта (переживает перезапуск сервера). */
@@ -237,8 +368,8 @@ export class CouncilRuntime {
     runId: string,
     config: CouncilConfig,
   ): Promise<JobSnapshot<DeliberationResult> | undefined> {
-    const live = this.jobs.snapshot(runId);
-    if (live) return live;
+    const live = this.snapshot(runId);
+    if (live && (live.status === "running" || live.result)) return live;
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(runId)) return undefined;
     let text: string;
     try {

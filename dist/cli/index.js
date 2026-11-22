@@ -2053,7 +2053,7 @@ var require_thread_stream = __commonJS({
     var { version: version2 } = require_package();
     var { EventEmitter } = __require("events");
     var { Worker } = __require("worker_threads");
-    var { join: join17 } = __require("path");
+    var { join: join19 } = __require("path");
     var { pathToFileURL } = __require("url");
     var { wait } = require_wait();
     var {
@@ -2105,7 +2105,7 @@ var require_thread_stream = __commonJS({
     function createWorker(stream, opts) {
       const { filename, workerData } = opts;
       const bundlerOverrides = "__bundlerPathsOverrides" in globalThis ? globalThis.__bundlerPathsOverrides : {};
-      const toExecute = bundlerOverrides["thread-stream-worker"] || join17(__dirname, "lib", "worker.js");
+      const toExecute = bundlerOverrides["thread-stream-worker"] || join19(__dirname, "lib", "worker.js");
       const worker = new Worker(toExecute, {
         ...opts.workerOpts,
         name: opts.workerOpts?.name || "thread-stream",
@@ -2616,9 +2616,9 @@ var require_transport = __commonJS({
   "node_modules/pino/lib/transport.js"(exports, module) {
     "use strict";
     var { createRequire } = __require("module");
-    var { existsSync: existsSync3 } = __require("fs");
+    var { existsSync: existsSync4 } = __require("fs");
     var getCallers = require_caller();
-    var { join: join17, isAbsolute: isAbsolute2, sep } = __require("path");
+    var { join: join19, isAbsolute: isAbsolute2, sep } = __require("path");
     var { fileURLToPath: fileURLToPath3 } = __require("url");
     var sleep2 = require_atomic_sleep();
     var onExit = require_on_exit_leak_free();
@@ -2691,7 +2691,7 @@ var require_transport = __commonJS({
           return false;
         }
       }
-      return isAbsolute2(path) && !existsSync3(path);
+      return isAbsolute2(path) && !existsSync4(path);
     }
     function stripQuotes(value) {
       const first = value[0];
@@ -2773,7 +2773,7 @@ var require_transport = __commonJS({
         throw new Error("only one of target or targets can be specified");
       }
       if (targets) {
-        target = bundlerOverrides["pino-worker"] || join17(__dirname, "worker.js");
+        target = bundlerOverrides["pino-worker"] || join19(__dirname, "worker.js");
         options.targets = targets.filter((dest) => dest.target).map((dest) => {
           return {
             ...dest,
@@ -2794,7 +2794,7 @@ var require_transport = __commonJS({
         const pipelinesHaveLevel = options.pipelines.some((p) => p.some((t) => t.level != null));
         usesMultistream = options.targets.length + options.pipelines.length > 1 || targetsHaveLevel || pipelinesHaveLevel;
       } else if (pipeline) {
-        target = bundlerOverrides["pino-worker"] || join17(__dirname, "worker.js");
+        target = bundlerOverrides["pino-worker"] || join19(__dirname, "worker.js");
         options.pipelines = [pipeline.map((dest) => {
           return {
             ...dest,
@@ -2821,7 +2821,7 @@ var require_transport = __commonJS({
           return origin;
         }
         if (origin === "pino/file") {
-          return join17(__dirname, "..", "file.js");
+          return join19(__dirname, "..", "file.js");
         }
         let fixTarget2;
         for (const filePath of callers) {
@@ -3802,7 +3802,7 @@ var require_safe_stable_stringify = __commonJS({
               return circularValue;
             }
             let res = "";
-            let join17 = ",";
+            let join19 = ",";
             const originalIndentation = indentation;
             if (Array.isArray(value)) {
               if (value.length === 0) {
@@ -3816,7 +3816,7 @@ var require_safe_stable_stringify = __commonJS({
                 indentation += spacer;
                 res += `
 ${indentation}`;
-                join17 = `,
+                join19 = `,
 ${indentation}`;
               }
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
@@ -3824,13 +3824,13 @@ ${indentation}`;
               for (; i < maximumValuesToStringify - 1; i++) {
                 const tmp2 = stringifyFnReplacer(String(i), value, stack, replacer, spacer, indentation);
                 res += tmp2 !== void 0 ? tmp2 : "null";
-                res += join17;
+                res += join19;
               }
               const tmp = stringifyFnReplacer(String(i), value, stack, replacer, spacer, indentation);
               res += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res += `${join17}"... ${getItemCount(removedKeys)} not stringified"`;
+                res += `${join19}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               if (spacer !== "") {
                 res += `
@@ -3851,7 +3851,7 @@ ${originalIndentation}`;
             let separator = "";
             if (spacer !== "") {
               indentation += spacer;
-              join17 = `,
+              join19 = `,
 ${indentation}`;
               whitespace = " ";
             }
@@ -3865,13 +3865,13 @@ ${indentation}`;
               const tmp = stringifyFnReplacer(key2, value, stack, replacer, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}:${whitespace}${tmp}`;
-                separator = join17;
+                separator = join19;
               }
             }
             if (keyLength > maximumBreadth) {
               const removedKeys = keyLength - maximumBreadth;
               res += `${separator}"...":${whitespace}"${getItemCount(removedKeys)} not stringified"`;
-              separator = join17;
+              separator = join19;
             }
             if (spacer !== "" && separator.length > 1) {
               res = `
@@ -3912,7 +3912,7 @@ ${originalIndentation}`;
             }
             const originalIndentation = indentation;
             let res = "";
-            let join17 = ",";
+            let join19 = ",";
             if (Array.isArray(value)) {
               if (value.length === 0) {
                 return "[]";
@@ -3925,7 +3925,7 @@ ${originalIndentation}`;
                 indentation += spacer;
                 res += `
 ${indentation}`;
-                join17 = `,
+                join19 = `,
 ${indentation}`;
               }
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
@@ -3933,13 +3933,13 @@ ${indentation}`;
               for (; i < maximumValuesToStringify - 1; i++) {
                 const tmp2 = stringifyArrayReplacer(String(i), value[i], stack, replacer, spacer, indentation);
                 res += tmp2 !== void 0 ? tmp2 : "null";
-                res += join17;
+                res += join19;
               }
               const tmp = stringifyArrayReplacer(String(i), value[i], stack, replacer, spacer, indentation);
               res += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res += `${join17}"... ${getItemCount(removedKeys)} not stringified"`;
+                res += `${join19}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               if (spacer !== "") {
                 res += `
@@ -3952,7 +3952,7 @@ ${originalIndentation}`;
             let whitespace = "";
             if (spacer !== "") {
               indentation += spacer;
-              join17 = `,
+              join19 = `,
 ${indentation}`;
               whitespace = " ";
             }
@@ -3961,7 +3961,7 @@ ${indentation}`;
               const tmp = stringifyArrayReplacer(key2, value[key2], stack, replacer, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}:${whitespace}${tmp}`;
-                separator = join17;
+                separator = join19;
               }
             }
             if (spacer !== "" && separator.length > 1) {
@@ -4019,20 +4019,20 @@ ${originalIndentation}`;
               indentation += spacer;
               let res2 = `
 ${indentation}`;
-              const join18 = `,
+              const join20 = `,
 ${indentation}`;
               const maximumValuesToStringify = Math.min(value.length, maximumBreadth);
               let i = 0;
               for (; i < maximumValuesToStringify - 1; i++) {
                 const tmp2 = stringifyIndent(String(i), value[i], stack, spacer, indentation);
                 res2 += tmp2 !== void 0 ? tmp2 : "null";
-                res2 += join18;
+                res2 += join20;
               }
               const tmp = stringifyIndent(String(i), value[i], stack, spacer, indentation);
               res2 += tmp !== void 0 ? tmp : "null";
               if (value.length - 1 > maximumBreadth) {
                 const removedKeys = value.length - maximumBreadth - 1;
-                res2 += `${join18}"... ${getItemCount(removedKeys)} not stringified"`;
+                res2 += `${join20}"... ${getItemCount(removedKeys)} not stringified"`;
               }
               res2 += `
 ${originalIndentation}`;
@@ -4048,16 +4048,16 @@ ${originalIndentation}`;
               return '"[Object]"';
             }
             indentation += spacer;
-            const join17 = `,
+            const join19 = `,
 ${indentation}`;
             let res = "";
             let separator = "";
             let maximumPropertiesToStringify = Math.min(keyLength, maximumBreadth);
             if (isTypedArrayWithEntries(value)) {
-              res += stringifyTypedArray(value, join17, maximumBreadth);
+              res += stringifyTypedArray(value, join19, maximumBreadth);
               keys = keys.slice(value.length);
               maximumPropertiesToStringify -= value.length;
-              separator = join17;
+              separator = join19;
             }
             if (deterministic) {
               keys = sort(keys, comparator);
@@ -4068,13 +4068,13 @@ ${indentation}`;
               const tmp = stringifyIndent(key2, value[key2], stack, spacer, indentation);
               if (tmp !== void 0) {
                 res += `${separator}${strEscape(key2)}: ${tmp}`;
-                separator = join17;
+                separator = join19;
               }
             }
             if (keyLength > maximumBreadth) {
               const removedKeys = keyLength - maximumBreadth;
               res += `${separator}"...": "${getItemCount(removedKeys)} not stringified"`;
-              separator = join17;
+              separator = join19;
             }
             if (separator !== "") {
               res = `
@@ -49909,9 +49909,9 @@ var JobRunner = class {
     this.keepFinished = options.keepFinished ?? 50;
     this.onEvent = options.onEvent;
   }
-  start(task) {
-    let runId = this.newRunId();
-    while (this.jobs.has(runId)) runId = this.newRunId();
+  start(task, fixedRunId) {
+    let runId = fixedRunId ?? this.newRunId();
+    while (fixedRunId === void 0 && this.jobs.has(runId)) runId = this.newRunId();
     const controller = new AbortController();
     const tracker = new ProgressTracker(this.now, runId);
     const job = {
@@ -50329,14 +50329,95 @@ function createLogger(level, redactor) {
 
 // src/mcp/runtime.ts
 import { readFile as readFile11 } from "fs/promises";
-import { join as join16, relative as relative7 } from "path";
+import { join as join17, relative as relative7 } from "path";
+
+// src/core/detached.ts
+import { existsSync as existsSync3, mkdirSync, readFileSync as readFileSync3, renameSync, writeFileSync } from "fs";
+import { join as join14 } from "path";
+function jobsDir(stateDir) {
+  return join14(stateDir, "jobs");
+}
+var RUN_ID = /^[A-Za-z0-9_-]{1,64}$/;
+function statePath(stateDir, runId) {
+  if (!RUN_ID.test(runId)) throw new Error(`\u043D\u0435\u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u044B\u0439 run_id: ${runId}`);
+  return join14(jobsDir(stateDir), `${runId}.state.json`);
+}
+function cancelPath(stateDir, runId) {
+  if (!RUN_ID.test(runId)) throw new Error(`\u043D\u0435\u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u044B\u0439 run_id: ${runId}`);
+  return join14(jobsDir(stateDir), `${runId}.cancel`);
+}
+function writeJobState(stateDir, state) {
+  mkdirSync(jobsDir(stateDir), { recursive: true });
+  const path = statePath(stateDir, state.runId);
+  const tmp = `${path}.${String(process.pid)}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state));
+  renameSync(tmp, path);
+}
+function readJobState(stateDir, runId) {
+  try {
+    return JSON.parse(readFileSync3(statePath(stateDir, runId), "utf8"));
+  } catch {
+    return void 0;
+  }
+}
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === "EPERM";
+  }
+}
+function detachedSnapshot(stateDir, runId, alive = processAlive) {
+  if (!RUN_ID.test(runId)) return void 0;
+  const s = readJobState(stateDir, runId);
+  if (!s) return void 0;
+  if (s.status === "running" && s.pid !== void 0 && !alive(s.pid)) {
+    return {
+      runId,
+      status: "failed",
+      progress: s.progress,
+      error: "\u0440\u0430\u0431\u043E\u0447\u0438\u0439 \u043F\u0440\u043E\u0446\u0435\u0441\u0441 \u0441\u043E\u0432\u0435\u0442\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0441\u044F \u0431\u0435\u0437 \u0438\u0442\u043E\u0433\u0430 (\u0441\u043C. .council/jobs/<run_id>.log)"
+    };
+  }
+  return {
+    runId,
+    status: s.status,
+    progress: s.progress,
+    ...s.result !== void 0 && { result: s.result },
+    ...s.error !== void 0 && { error: s.error }
+  };
+}
+async function detachedWait(stateDir, runId, waitMs, options = {}) {
+  const deadline = Date.now() + waitMs;
+  let last;
+  for (; ; ) {
+    const s = detachedSnapshot(stateDir, runId, options.alive);
+    if (!s) return void 0;
+    if (s.progress !== last) {
+      last = s.progress;
+      options.onProgress?.(s.progress);
+    }
+    if (s.status !== "running" || Date.now() >= deadline) return s;
+    await new Promise((r) => setTimeout(r, Math.min(options.pollMs ?? 500, deadline - Date.now())));
+  }
+}
+function requestCancel(stateDir, runId) {
+  const s = detachedSnapshot(stateDir, runId);
+  if (s?.status !== "running") return false;
+  writeFileSync(cancelPath(stateDir, runId), String(Date.now()));
+  return true;
+}
+function cancelRequested(stateDir, runId) {
+  return existsSync3(cancelPath(stateDir, runId));
+}
 
 // src/core/workflow/machine.ts
-import { join as join15 } from "path";
+import { join as join16 } from "path";
 
 // src/core/workflow/state.ts
 import { mkdir as mkdir5, readdir as readdir6 } from "fs/promises";
-import { join as join14 } from "path";
+import { join as join15 } from "path";
 var PHASES = ["discover", "define", "develop", "deliver"];
 var AUTONOMY = ["supervised", "semi", "auto"];
 var PHASE_TITLE = {
@@ -50352,10 +50433,10 @@ var WorkflowStore = class {
   }
   stateDir;
   dir() {
-    return join14(this.stateDir, "workflows");
+    return join15(this.stateDir, "workflows");
   }
   path(id) {
-    return join14(this.dir(), `${id}.json`);
+    return join15(this.dir(), `${id}.json`);
   }
   async load(id) {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return void 0;
@@ -50369,7 +50450,7 @@ var WorkflowStore = class {
       return [];
     }
     const all = await Promise.all(
-      files.map((f) => readJson(join14(this.dir(), f), void 0))
+      files.map((f) => readJson(join15(this.dir(), f), void 0))
     );
     return all.filter((w) => w !== void 0).sort((a, b) => b.updated.localeCompare(a.updated));
   }
@@ -50388,7 +50469,7 @@ var WorkflowStore = class {
     await this.renderStateMd();
   }
   async renderStateMd() {
-    const path = join14(this.stateDir, "STATE.md");
+    const path = join15(this.stateDir, "STATE.md");
     await withLock(path, async () => {
       const active = await this.active();
       const decisions = (await readDecisions(this.stateDir)).slice(-5).reverse();
@@ -50570,7 +50651,11 @@ var WorkflowMachine = class {
     }
     const deliberation = this.phaseInput(state, phase, input2);
     state.status = "running";
-    state.phases[phase] = { status: "running", updated: this.ts() };
+    state.phases[phase] = {
+      status: "running",
+      updated: this.ts(),
+      ...opts.runId !== void 0 && { run_id: opts.runId }
+    };
     this.note(state, phase, "run");
     await this.store.save(state);
     opts.onStart?.(state);
@@ -50646,7 +50731,7 @@ var WorkflowMachine = class {
   }
   workspaceFor(state, phase) {
     const wt = this.worktree(state);
-    return (phase === "develop" || phase === "deliver") && wt !== void 0 ? join15(this.options.config.workspace, wt) : this.options.config.workspace;
+    return (phase === "develop" || phase === "deliver") && wt !== void 0 ? join16(this.options.config.workspace, wt) : this.options.config.workspace;
   }
   phaseInput(state, phase, input2) {
     const files = input2.files ?? state.context.files;
@@ -50730,6 +50815,51 @@ function researchSummary(r) {
 }
 
 // src/mcp/runtime.ts
+function applyModels(base, ids) {
+  if (ids === void 0) return base;
+  const known = new Map(base.models.map((m) => [m.id, m]));
+  const template = base.models[0];
+  const models = ids.map(
+    (id) => known.get(id) ?? {
+      ...template ?? { context: 32e3, output: 8e3, maxConcurrency: 1 },
+      id
+    }
+  );
+  return { ...base, models };
+}
+async function runDeliberationTask(input2, config2, driver, ctx) {
+  try {
+    return await deliberate(input2, {
+      config: config2,
+      driver,
+      runId: ctx.runId,
+      emit: ctx.emit,
+      signal: ctx.signal,
+      ...ctx.now && { now: ctx.now }
+    });
+  } finally {
+    await driver.dispose().catch(() => void 0);
+  }
+}
+async function runPhaseTask(config2, machine, workflowId, input2, makeDriver2, ctx) {
+  const runner = (deliberation, workspace) => runDeliberationTask(deliberation, config2, makeDriver2({ ...config2, workspace }), ctx);
+  const ar = await machine.advance(workflowId, input2, runner, { runId: ctx.runId });
+  if (!ar.result) throw new WorkflowError("\u0444\u0430\u0437\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0430\u0441\u044C \u0431\u0435\u0437 \u0437\u0430\u043F\u0443\u0441\u043A\u0430 \u0441\u043E\u0432\u0435\u0442\u0430");
+  const result = {
+    ...ar.result,
+    workflow: {
+      id: ar.state.id,
+      phase: ar.phase,
+      gate: ar.gate,
+      next: ar.next,
+      options: ar.options,
+      state_path: relative7(config2.workspace, join17(config2.paths.stateDir, "STATE.md")),
+      status: ar.state.status,
+      current_phase: ar.state.phase
+    }
+  };
+  return { ...result, report: renderReport(result) };
+}
 var CouncilRuntime = class {
   constructor(options) {
     this.options = options;
@@ -50767,15 +50897,7 @@ var CouncilRuntime = class {
   config() {
     const base = this.loadBase();
     if (!base.ok || this.modelsOverride === void 0) return base;
-    const known = new Map(base.config.models.map((m) => [m.id, m]));
-    const template = base.config.models[0];
-    const models = this.modelsOverride.map(
-      (id) => known.get(id) ?? {
-        ...template ?? { context: 32e3, output: 8e3, maxConcurrency: 1 },
-        id
-      }
-    );
-    return { ok: true, config: { ...base.config, models } };
+    return { ok: true, config: applyModels(base.config, this.modelsOverride) };
   }
   /** Конфиг читается при первом обращении и перечитывается, пока он с ошибкой. */
   loadBase() {
@@ -50798,29 +50920,68 @@ var CouncilRuntime = class {
       );
     }
     const driver = this.options.makeDriver(config2);
+    if (this.options.spawnWorker) {
+      await driver.dispose().catch(() => void 0);
+      return this.spawn(config2, {
+        kind: "deliberate",
+        input: input2,
+        ...this.modelsOverride && { models: this.modelsOverride }
+      });
+    }
     return this.jobs.start(async ({ runId, signal, emit }) => {
       this.options.logger.info(
         { runId, mode: input2.mode, driver: driver.name },
         "council run started"
       );
-      try {
-        const result = await deliberate(input2, {
-          config: config2,
-          driver,
-          runId,
-          emit,
-          signal,
-          ...this.options.now && { now: this.options.now }
-        });
-        this.options.logger.info(
-          { runId, status: result.status, usage: result.usage },
-          "council run finished"
-        );
-        return result;
-      } finally {
-        await driver.dispose().catch(() => void 0);
-      }
+      const result = await runDeliberationTask(input2, config2, driver, {
+        runId,
+        emit,
+        signal,
+        ...this.options.now && { now: this.options.now }
+      });
+      this.options.logger.info(
+        { runId, status: result.status, usage: result.usage },
+        "council run finished"
+      );
+      return result;
     });
+  }
+  /** Запуск в рабочем процессе: начальное состояние в файле, затем отвязанный процесс. */
+  async spawn(config2, spec) {
+    const runId = this.newRunId();
+    await ensureStateDir(config2.paths.stateDir);
+    const now = (this.options.now ?? Date.now)();
+    writeJobState(config2.paths.stateDir, {
+      runId,
+      status: "running",
+      progress: `\u{1F3DB} Council \xB7 \u0437\u0430\u043F\u0443\u0441\u043A \u0440\u0430\u0431\u043E\u0447\u0435\u0433\u043E \u043F\u0440\u043E\u0446\u0435\u0441\u0441\u0430 \xB7 run ${runId}`,
+      updatedAt: now
+    });
+    const pid = this.options.spawnWorker?.({ ...spec, runId }, config2);
+    writeJobState(config2.paths.stateDir, {
+      runId,
+      status: "running",
+      progress: `\u{1F3DB} Council \xB7 \u0437\u0430\u043F\u0443\u0441\u043A \u0440\u0430\u0431\u043E\u0447\u0435\u0433\u043E \u043F\u0440\u043E\u0446\u0435\u0441\u0441\u0430 \xB7 run ${runId}`,
+      ...pid !== void 0 && { pid },
+      updatedAt: now
+    });
+    this.options.logger.info({ runId, pid, kind: spec.kind }, "council worker started");
+    return runId;
+  }
+  newRunId() {
+    return (this.options.newRunId ?? (() => defaultRunId(new Date((this.options.now ?? Date.now)()))))();
+  }
+  /** Снимок запуска: внутри процесса или из файла рабочего процесса. */
+  snapshot(runId) {
+    const live = this.jobs.snapshot(runId);
+    if (live) return live;
+    const state = this.config();
+    return state.ok ? detachedSnapshot(state.config.paths.stateDir, runId) : void 0;
+  }
+  cancel(runId) {
+    if (this.jobs.cancel(runId)) return true;
+    const state = this.config();
+    return state.ok ? requestCancel(state.config.paths.stateDir, runId) : false;
   }
   machines = /* @__PURE__ */ new Map();
   machine(config2) {
@@ -50834,7 +50995,7 @@ var CouncilRuntime = class {
   /** Состояние процесса с восстановлением фазы, прерванной перезапуском сервера. */
   async workflowState(config2, id) {
     const m = this.machine(config2);
-    return m.recover(await m.get(id), (runId) => this.jobs.snapshot(runId)?.status === "running");
+    return m.recover(await m.get(id), (runId) => this.snapshot(runId)?.status === "running");
   }
   /**
    * Прогнать текущую фазу процесса в фоне (как обычный запуск — ждать через council_wait).
@@ -50847,39 +51008,22 @@ var CouncilRuntime = class {
     if (state.status === "aborted" || state.status === "done")
       throw new WorkflowError(`\u043F\u0440\u043E\u0446\u0435\u0441\u0441 ${state.id}: ${state.status}`);
     machine.preflight(state, input2);
-    return this.jobs.start(async ({ runId, signal, emit }) => {
-      const runner = async (deliberation, workspace) => {
-        const driver = this.options.makeDriver({ ...config2, workspace });
-        try {
-          return await deliberate(deliberation, {
-            config: config2,
-            driver,
-            runId,
-            emit,
-            signal,
-            ...this.options.now && { now: this.options.now }
-          });
-        } finally {
-          await driver.dispose().catch(() => void 0);
-        }
-      };
-      const ar = await machine.advance(state.id, input2, runner);
-      if (!ar.result) throw new WorkflowError("\u0444\u0430\u0437\u0430 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0430\u0441\u044C \u0431\u0435\u0437 \u0437\u0430\u043F\u0443\u0441\u043A\u0430 \u0441\u043E\u0432\u0435\u0442\u0430");
-      const result = {
-        ...ar.result,
-        workflow: {
-          id: ar.state.id,
-          phase: ar.phase,
-          gate: ar.gate,
-          next: ar.next,
-          options: ar.options,
-          state_path: relative7(config2.workspace, join16(config2.paths.stateDir, "STATE.md")),
-          status: ar.state.status,
-          current_phase: ar.state.phase
-        }
-      };
-      return { ...result, report: renderReport(result) };
-    });
+    if (this.options.spawnWorker) {
+      return this.spawn(config2, {
+        kind: "phase",
+        input: input2,
+        workflowId: state.id,
+        ...this.modelsOverride && { models: this.modelsOverride }
+      });
+    }
+    return this.jobs.start(
+      ({ runId, signal, emit }) => runPhaseTask(config2, machine, state.id, input2, this.options.makeDriver, {
+        runId,
+        emit,
+        signal,
+        ...this.options.now && { now: this.options.now }
+      })
+    );
   }
   subscribe(runId, listener) {
     const set2 = this.listeners.get(runId) ?? /* @__PURE__ */ new Set();
@@ -50890,17 +51034,33 @@ var CouncilRuntime = class {
       if (set2.size === 0) this.listeners.delete(runId);
     };
   }
-  wait(runId, waitMs) {
-    return this.jobs.wait(runId, waitMs);
+  /** Ждёт итога не дольше waitMs; onProgress — при каждом изменении прогресса. */
+  async wait(runId, waitMs, onProgress) {
+    if (this.jobs.snapshot(runId)) {
+      const unsubscribe = onProgress ? this.subscribe(runId, () => {
+        const s = this.jobs.snapshot(runId);
+        if (s) onProgress(s.progress);
+      }) : void 0;
+      try {
+        return await this.jobs.wait(runId, waitMs);
+      } finally {
+        unsubscribe?.();
+      }
+    }
+    const state = this.config();
+    if (!state.ok) return void 0;
+    return detachedWait(state.config.paths.stateDir, runId, waitMs, {
+      ...onProgress && { onProgress }
+    });
   }
   /** Итог прошлого запуска: из памяти или из транскрипта (переживает перезапуск сервера). */
   async getRun(runId, config2) {
-    const live = this.jobs.snapshot(runId);
-    if (live) return live;
+    const live = this.snapshot(runId);
+    if (live && (live.status === "running" || live.result)) return live;
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(runId)) return void 0;
     let text4;
     try {
-      text4 = await readFile11(join16(config2.paths.stateDir, "runs", `${runId}.jsonl`), "utf8");
+      text4 = await readFile11(join17(config2.paths.stateDir, "runs", `${runId}.jsonl`), "utf8");
     } catch {
       return void 0;
     }
@@ -51164,23 +51324,21 @@ ${r.report}
     structuredContent: { run_id: s.runId, status: s.status, error: reason }
   };
 }
-function withProgress(runtime, runId, ctx, task) {
+function progressNotifier(ctx) {
   const token = ctx.mcpReq._meta?.progressToken;
-  if (token === void 0) return task();
-  let progress = 0;
-  const unsubscribe = runtime.subscribe(runId, (event) => {
-    progress++;
-    const snapshot = runtime.jobs.snapshot(runId);
+  if (token === void 0) return void 0;
+  let n = 0;
+  return (text4) => {
+    n++;
     void ctx.mcpReq.notify({
       method: "notifications/progress",
       params: {
         progressToken: token,
-        progress,
-        message: snapshot?.progress.split("\n").slice(-2).join(" \xB7 ") ?? event.type
+        progress: n,
+        message: text4.split("\n").slice(-2).join(" \xB7 ")
       }
     }).catch(() => void 0);
-  });
-  return task().finally(unsubscribe);
+  };
 }
 function buildMcpServer(runtime, defaultWaitS = DEFAULT_WAIT_S) {
   const server = new McpServer(
@@ -51219,7 +51377,7 @@ function buildMcpServer(runtime, defaultWaitS = DEFAULT_WAIT_S) {
             ...text3(
               [
                 `\u{1F3DB} Council \xB7 ${input2.mode} \xB7 dry run (\u043C\u043E\u0434\u0435\u043B\u0438 \u043D\u0435 \u0432\u044B\u0437\u044B\u0432\u0430\u044E\u0442\u0441\u044F)`,
-                `\u041F\u0430\u043D\u0435\u043B\u044C (${String(plan.seats.length)}): ${plan.seats.map((s) => s.persona.name).join(", ")}`,
+                `\u041F\u0430\u043D\u0435\u043B\u044C (${String(plan.seats.length)}): ${plan.seats.map((s2) => s2.persona.name).join(", ")}`,
                 renderEstimate(plan.estimate),
                 ...plan.overBudget.length > 0 ? [`\u26A0 \u041F\u0440\u0435\u0432\u044B\u0448\u0435\u043D\u0438\u0435 \u0431\u044E\u0434\u0436\u0435\u0442\u0430: ${plan.overBudget.join("; ")}`] : []
               ].join("\n")
@@ -51232,10 +51390,8 @@ function buildMcpServer(runtime, defaultWaitS = DEFAULT_WAIT_S) {
           };
         }
         const runId = await runtime.start(input2, config2);
-        return await withProgress(runtime, runId, ctx, async () => {
-          const s = await runtime.wait(runId, waitMs(args.wait_s));
-          return s ? snapshotResult(s) : text3(`\u0437\u0430\u043F\u0443\u0441\u043A ${runId} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D`, true);
-        });
+        const s = await runtime.wait(runId, waitMs(args.wait_s), progressNotifier(ctx));
+        return s ? snapshotResult(s) : text3(`\u0437\u0430\u043F\u0443\u0441\u043A ${runId} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D`, true);
       } catch (e) {
         return failure2(e);
       }
@@ -51251,14 +51407,13 @@ function buildMcpServer(runtime, defaultWaitS = DEFAULT_WAIT_S) {
     async (args, ctx) => {
       const config2 = configOr();
       if (!config2) return configError();
-      if (!runtime.jobs.snapshot(args.run_id)) {
+      if (!runtime.snapshot(args.run_id)) {
         const past = await runtime.getRun(args.run_id, config2);
         return past ? snapshotResult(past) : text3(`\u0417\u0430\u043F\u0443\u0441\u043A ${args.run_id} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D`, true);
       }
-      return withProgress(runtime, args.run_id, ctx, async () => {
-        const s = await runtime.wait(args.run_id, waitMs(args.wait_s));
-        return s ? snapshotResult(s) : text3(`\u0417\u0430\u043F\u0443\u0441\u043A ${args.run_id} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D`, true);
-      });
+      const notify = progressNotifier(ctx);
+      const s = await runtime.wait(args.run_id, waitMs(args.wait_s), notify);
+      return s ? snapshotResult(s) : text3(`\u0417\u0430\u043F\u0443\u0441\u043A ${args.run_id} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D`, true);
     }
   );
   server.registerTool(
@@ -51268,7 +51423,7 @@ function buildMcpServer(runtime, defaultWaitS = DEFAULT_WAIT_S) {
       description: "\u041E\u0442\u043C\u0435\u043D\u0438\u0442\u044C \u0438\u0434\u0443\u0449\u0438\u0439 \u0437\u0430\u043F\u0443\u0441\u043A \u0441\u043E\u0432\u0435\u0442\u0430. \u0418\u0442\u043E\u0433 \u043F\u043E \u0443\u0436\u0435 \u043F\u043E\u043B\u0443\u0447\u0435\u043D\u043D\u044B\u043C \u043E\u0442\u0432\u0435\u0442\u0430\u043C \u0431\u0443\u0434\u0435\u0442 \u0441\u043E \u0441\u0442\u0430\u0442\u0443\u0441\u043E\u043C partial.",
       inputSchema: RunIdSchema
     },
-    (args) => runtime.jobs.cancel(args.run_id) ? text3(
+    (args) => runtime.cancel(args.run_id) ? text3(
       `\u0417\u0430\u043F\u0443\u0441\u043A ${args.run_id} \u043E\u0442\u043C\u0435\u043D\u044F\u0435\u0442\u0441\u044F. \u0412\u044B\u0437\u043E\u0432\u0438 council_wait, \u0447\u0442\u043E\u0431\u044B \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u0447\u0430\u0441\u0442\u0438\u0447\u043D\u044B\u0439 \u0438\u0442\u043E\u0433.`
     ) : text3(`\u0417\u0430\u043F\u0443\u0441\u043A ${args.run_id} \u043D\u0435 \u0438\u0434\u0451\u0442`, true)
   );
@@ -51479,10 +51634,8 @@ ${renderState(state, decisions)}`),
               );
             }
             const runId = await runtime.startPhase(config2, args.workflow_id, input2);
-            return await withProgress(runtime, runId, ctx, async () => {
-              const s = await runtime.wait(runId, waitMs(args.wait_s));
-              return s ? snapshotResult(s) : text3(`\u0437\u0430\u043F\u0443\u0441\u043A ${runId} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D`, true);
-            });
+            const s = await runtime.wait(runId, waitMs(args.wait_s), progressNotifier(ctx));
+            return s ? snapshotResult(s) : text3(`\u0437\u0430\u043F\u0443\u0441\u043A ${runId} \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D`, true);
           }
         }
       } catch (e) {
@@ -51660,6 +51813,115 @@ async function serveHttp(runtime, options) {
   };
 }
 
+// src/cli/worker.ts
+import {
+  closeSync,
+  mkdirSync as mkdirSync2,
+  openSync,
+  readdirSync,
+  readFileSync as readFileSync4,
+  rmSync,
+  statSync,
+  writeFileSync as writeFileSync2
+} from "fs";
+import { spawn as spawn2 } from "child_process";
+import { join as join18 } from "path";
+var KEEP_DAYS = 7;
+function spawnWorker(bundlePath, spec, config2) {
+  const dir = jobsDir(config2.paths.stateDir);
+  mkdirSync2(dir, { recursive: true });
+  pruneJobs(dir);
+  const specPath = join18(dir, `${spec.runId}.spec.json`);
+  writeFileSync2(specPath, JSON.stringify(spec), { mode: 384 });
+  const log = openSync(join18(dir, `${spec.runId}.log`), "a", 384);
+  try {
+    const child = spawn2(process.execPath, [bundlePath, "worker", "--spec", specPath], {
+      cwd: config2.workspace,
+      env: process.env,
+      detached: true,
+      stdio: ["ignore", log, log]
+    });
+    child.unref();
+    return child.pid;
+  } finally {
+    closeSync(log);
+  }
+}
+function pruneJobs(dir) {
+  const limit = Date.now() - KEEP_DAYS * 24 * 3600 * 1e3;
+  for (const name of readdirSync(dir)) {
+    const path = join18(dir, name);
+    try {
+      if (statSync(path).mtimeMs < limit) rmSync(path, { force: true });
+    } catch {
+    }
+  }
+}
+async function runWorker(argv, deps) {
+  const i = argv.indexOf("--spec");
+  const specPath = i >= 0 ? argv[i + 1] : void 0;
+  if (!specPath) {
+    process.stderr.write("council worker --spec <\u0444\u0430\u0439\u043B>\n");
+    return 2;
+  }
+  const spec = JSON.parse(readFileSync4(specPath, "utf8"));
+  rmSync(specPath, { force: true });
+  const config2 = applyModels(loadConfig(deps.configDeps()), spec.models);
+  const stateDir = config2.paths.stateDir;
+  const runId = spec.runId;
+  const tracker = new ProgressTracker(Date.now, runId);
+  const controller = new AbortController();
+  const write = (status, extra = {}) => {
+    writeJobState(stateDir, {
+      runId,
+      status,
+      progress: tracker.render(),
+      pid: process.pid,
+      updatedAt: Date.now(),
+      ...extra
+    });
+  };
+  const emit = (event) => {
+    tracker.apply(event);
+    write("running");
+  };
+  process.on("SIGHUP", () => void 0);
+  process.on("SIGTERM", () => {
+    controller.abort(new Error("\u0440\u0430\u0431\u043E\u0447\u0438\u0439 \u043F\u0440\u043E\u0446\u0435\u0441\u0441 \u0441\u043E\u0432\u0435\u0442\u0430 \u043E\u0441\u0442\u0430\u043D\u043E\u0432\u043B\u0435\u043D (SIGTERM)"));
+  });
+  const timer = setInterval(() => {
+    if (!controller.signal.aborted && cancelRequested(stateDir, runId))
+      controller.abort(new Error("\u0437\u0430\u043F\u0443\u0441\u043A \u043E\u0442\u043C\u0435\u043D\u0451\u043D \u0432\u044B\u0437\u043E\u0432\u043E\u043C council_cancel"));
+    write("running");
+  }, 1e3);
+  write("running");
+  const ctx = { runId, emit, signal: controller.signal };
+  try {
+    const result = spec.kind === "phase" ? await runPhaseTask(
+      config2,
+      new WorkflowMachine({ config: config2 }),
+      spec.workflowId ?? "",
+      spec.input,
+      deps.makeDriver,
+      ctx
+    ) : await runDeliberationTask(
+      spec.input,
+      config2,
+      deps.makeDriver(config2),
+      ctx
+    );
+    clearInterval(timer);
+    write(controller.signal.aborted ? "cancelled" : "done", { result });
+    return 0;
+  } catch (e) {
+    clearInterval(timer);
+    write(controller.signal.aborted ? "cancelled" : "failed", {
+      error: e instanceof Error ? e.message : String(e)
+    });
+    return 1;
+  }
+}
+
 // src/cli/mcp.ts
 async function runMcp(argv, makeDriver2) {
   const { values } = parseArgs2({
@@ -51682,13 +51944,18 @@ async function runMcp(argv, makeDriver2) {
   const waitS2 = waitRaw === void 0 ? void 0 : Number(waitRaw);
   if (waitS2 !== void 0 && (!Number.isInteger(waitS2) || waitS2 < 0))
     throw new Error("--wait-s: \u0446\u0435\u043B\u043E\u0435 \u0447\u0438\u0441\u043B\u043E \u0441\u0435\u043A\u0443\u043D\u0434");
+  const bundlePath = fileURLToPath(import.meta.url);
+  const detached = bundlePath.endsWith(".js") && env.COUNCIL_DETACHED !== "0";
   const runtime = new CouncilRuntime({
     configDeps: nodeConfigDeps,
     makeDriver: makeDriver2,
     logger,
     checkAgent,
     which: (command) => which(command),
-    bundlePath: fileURLToPath(import.meta.url)
+    bundlePath,
+    ...detached && {
+      spawnWorker: (spec, config2) => spawnWorker(bundlePath, spec, config2)
+    }
   });
   const state = runtime.config();
   if (!state.ok)
@@ -51731,7 +51998,13 @@ var makeDriver = (config2) => new AcpDriver(config2, {
 `);
   }
 });
-if (process.argv[2] === "mcp") {
+if (process.argv[2] === "worker") {
+  process.exitCode = await runWorker(process.argv.slice(3), {
+    configDeps: nodeConfigDeps,
+    makeDriver
+  });
+  process.exit();
+} else if (process.argv[2] === "mcp") {
   try {
     await runMcp(process.argv.slice(3), makeDriver);
   } catch (e) {

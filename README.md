@@ -58,12 +58,12 @@ opencode запускает не ваша оболочка, и переменн�
 сервис:
 
 ```bash
-find ~ -type d -name 'git-council-mcp-*' -path '*opencode/npm*' -prune -exec rm -rf {} + 2>/dev/null
+find ~/.cache "${XDG_CACHE_HOME:-$HOME/.cache}" -maxdepth 3 -type d -name 'git-council-mcp-*' -prune -exec rm -rf {} + 2>/dev/null
 opencode service restart
 ```
 
-`find` ищет кэш везде в домашней папке: при заданном `XDG_CACHE_HOME` он лежит не в
-`~/.cache`.
+Если opencode запускается с другим `XDG_CACHE_HOME`, путь к плагину есть в логе:
+`grep -ho 'entrypoint=file://[^ ]*council-mcp' ~/.local/share/opencode/log/opencode.log | tail -1`.
 
 ## Как пользоваться
 

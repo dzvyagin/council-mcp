@@ -205,30 +205,23 @@ export function snapshotResult(s: JobSnapshot<DeliberationResult>): CallToolResu
 }
 
 /** Прогресс в MCP progress notifications — для хостов, которые их показывают (Claude Code, Gemini CLI). */
-function withProgress<T>(
-  runtime: CouncilRuntime,
-  runId: string,
-  ctx: ServerContext,
-  task: () => Promise<T>,
-): Promise<T> {
+function progressNotifier(ctx: ServerContext): ((progress: string) => void) | undefined {
   const token = ctx.mcpReq._meta?.progressToken;
-  if (token === undefined) return task();
-  let progress = 0;
-  const unsubscribe = runtime.subscribe(runId, (event) => {
-    progress++;
-    const snapshot = runtime.jobs.snapshot(runId);
+  if (token === undefined) return undefined;
+  let n = 0;
+  return (text) => {
+    n++;
     void ctx.mcpReq
       .notify({
         method: "notifications/progress",
         params: {
           progressToken: token,
-          progress,
-          message: snapshot?.progress.split("\n").slice(-2).join(" · ") ?? event.type,
+          progress: n,
+          message: text.split("\n").slice(-2).join(" · "),
         },
       })
       .catch(() => undefined);
-  });
-  return task().finally(unsubscribe);
+  };
 }
 
 export function buildMcpServer(runtime: CouncilRuntime, defaultWaitS = DEFAULT_WAIT_S): McpServer {
@@ -283,10 +276,8 @@ export function buildMcpServer(runtime: CouncilRuntime, defaultWaitS = DEFAULT_W
           };
         }
         const runId = await runtime.start(input, config);
-        return await withProgress(runtime, runId, ctx, async () => {
-          const s = await runtime.wait(runId, waitMs(args.wait_s));
-          return s ? snapshotResult(s) : text(`запуск ${runId} не найден`, true);
-        });
+        const s = await runtime.wait(runId, waitMs(args.wait_s), progressNotifier(ctx));
+        return s ? snapshotResult(s) : text(`запуск ${runId} не найден`, true);
       } catch (e) {
         return failure(e);
       }
@@ -304,14 +295,13 @@ export function buildMcpServer(runtime: CouncilRuntime, defaultWaitS = DEFAULT_W
     async (args, ctx) => {
       const config = configOr();
       if (!config) return configError();
-      if (!runtime.jobs.snapshot(args.run_id)) {
+      if (!runtime.snapshot(args.run_id)) {
         const past = await runtime.getRun(args.run_id, config);
         return past ? snapshotResult(past) : text(`Запуск ${args.run_id} не найден`, true);
       }
-      return withProgress(runtime, args.run_id, ctx, async () => {
-        const s = await runtime.wait(args.run_id, waitMs(args.wait_s));
-        return s ? snapshotResult(s) : text(`Запуск ${args.run_id} не найден`, true);
-      });
+      const notify = progressNotifier(ctx);
+      const s = await runtime.wait(args.run_id, waitMs(args.wait_s), notify);
+      return s ? snapshotResult(s) : text(`Запуск ${args.run_id} не найден`, true);
     },
   );
 
@@ -324,7 +314,7 @@ export function buildMcpServer(runtime: CouncilRuntime, defaultWaitS = DEFAULT_W
       inputSchema: RunIdSchema,
     },
     (args) =>
-      runtime.jobs.cancel(args.run_id)
+      runtime.cancel(args.run_id)
         ? text(
             `Запуск ${args.run_id} отменяется. Вызови council_wait, чтобы получить частичный итог.`,
           )
@@ -569,10 +559,8 @@ ${renderState(state, decisions)}`),
               );
             }
             const runId = await runtime.startPhase(config, args.workflow_id, input);
-            return await withProgress(runtime, runId, ctx, async () => {
-              const s = await runtime.wait(runId, waitMs(args.wait_s));
-              return s ? snapshotResult(s) : text(`запуск ${runId} не найден`, true);
-            });
+            const s = await runtime.wait(runId, waitMs(args.wait_s), progressNotifier(ctx));
+            return s ? snapshotResult(s) : text(`запуск ${runId} не найден`, true);
           }
         }
       } catch (e) {
