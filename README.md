@@ -2,7 +2,7 @@
 
 MCP-сервер «совета моделей» для ключевых архитектурных решений: consensus, debate, vote и review. Участники — агенты (через ACP), итог — решение с особым мнением и ADR в `docs/adr/`.
 
-Статус: фаза 8 — режимы consensus, debate, vote, review, discover, Double Diamond и сервисные команды (setup, doctor, usage, models, auto) через MCP-сервер (stdio и HTTP) для opencode V2, DSH и других хостов. План — [docs/PLAN.md](docs/PLAN.md).
+Статус: фазы 0–9 плана — режимы consensus, debate, vote, review, discover, Double Diamond, сервисные команды и плагин opencode (защита путей, состояние совета в контексте, подсказка роутера) через MCP-сервер (stdio и HTTP) для opencode V2, DSH и других хостов. Не проверено на реальных моделях банка. План — [docs/PLAN.md](docs/PLAN.md).
 
 ## Как это устроено
 
@@ -21,6 +21,26 @@ cd /path/to/project && node /path/to/council-mcp/dist/cli/index.js setup --host 
 ```
 
 `setup` кладёт в проект команды и агентов opencode, Skill, фрагмент AGENTS.md, `council.config.json` и `opencode.jsonc` с MCP-сервером (существующие файлы не трогает: для чужого `opencode.jsonc` выводит блок для вставки), добавляет `.council/` в `.gitignore` и запускает `doctor`. Остаётся задать в окружении `COUNCIL_BASE_URL`, `COUNCIL_API_KEY`, `COUNCIL_MODELS` и перезапустить opencode. Если MCP-сервер уже подключён — то же делает MCP-промпт `/council:setup`.
+
+## Плагин opencode
+
+`council setup --host opencode` ставит `.opencode/plugins/council.ts` (логика — в `dist/plugin/lib.js`):
+
+- **Защита путей.** Правка файлов из `protectedPaths` (по умолчанию `**/migrations/**`, `**/*.sql`, `**/openapi*.{yml,yaml,json}`, `docs/architecture/**`) инструментами `edit`, `write`, `patch` блокируется с сообщением «нужно решение совета», если в этой сессии не было запуска совета и нет ADR, упоминающего файл. Аварийное отключение — `COUNCIL_GUARD=off`.
+- **Состояние совета в каждом запросе агента** (`<council-state>`: активный процесс, фаза, гейты, worktree, последние ADR) — переживает сжатие контекста; в запросе сжатия — просьба сохранить его в итоге.
+- **Подсказка роутера** на обычные промпты: `COUNCIL_AUTO_ROUTER=suggest` (по умолчанию — предложить команду), `invoke` (запустить), `off`.
+
+## Бюджет
+
+`budget.max_calls`, `max_tokens`, `max_duration_s` (в запросе или `defaults.budget` в конфиге): прогноз выше лимита — отказ до запуска (`confirm_budget` — запустить всё равно); во время запуска лимит жёсткий — текущий раунд дожидается, новые не начинаются, итог синтезируется по имеющемуся со статусом `partial`, ADR пишется.
+
+## Оценка качества
+
+```bash
+npx tsx eval/run.ts --out eval/out
+```
+
+9 задач в `eval/cases/` (БД, мультитенантность, границы сервисов, саги, брокер, идемпотентность API, миграция Oracle → PostgreSQL, секреты, витрина отчётности). Для каждой — решение одиночной модели и решение совета в одинаковом формате, в случайном порядке `A.md` / `B.md`, `checklist.md` для слепой оценки человеком, `key.json` — что есть что и цена (вызовы, токены, секунды).
 
 ## Подключение к хосту
 
