@@ -2,7 +2,7 @@
 
 MCP-сервер «совета моделей» для ключевых архитектурных решений: consensus, debate, vote и review. Участники — агенты (через ACP), итог — решение с особым мнением и ADR в `docs/adr/`.
 
-Статус: фаза 3 — режимы vote и consensus из CLI, ADR и транскрипты. План — [docs/PLAN.md](docs/PLAN.md).
+Статус: фаза 4 — consensus и vote с панелью персон, гейтами и прогнозом; ADR и транскрипты. План — [docs/PLAN.md](docs/PLAN.md).
 
 ## Как это устроено
 
@@ -39,6 +39,10 @@ council run --mode vote -q "REST или gRPC для внутреннего API?"
 ```
 
 Прогресс печатается в stderr, итоговый отчёт — в stdout (`--json` — структурированный результат).
+
+Флаги `council run`: `--panel 3|5|7` (персон больше, чем моделей, — модель играет несколько персон, каждая в своей сессии, и не критикует своих), `--style balanced|adversarial|red-team|executive|implementation` (состав персон и форма итога), `--goal advice|decision|plan|implement|review` (ADR — для decision/plan/implement; план работ — для plan/implement), `--research-first` (шаг исследования перед раундами), `--budget-calls N`, `--budget-tokens N` (прогноз выше лимита — отказ до запуска, `--confirm-budget` — запустить всё равно), `--dry-run` (состав и прогноз без вызовов моделей).
+
+Гейты: кворум раунда ⌊panel/2⌋ + 1 ответов; вето SRE и безопасности на critical-недостаток решения большинства (не снято доработкой — `vetoed`, ADR со статусом `rejected`); consensus score = доля уверенности большинства − 0,1 за каждый незакрытый major против большинства; гейт — score ≥ `COUNCIL_QUALITY_THRESHOLD` (0,75) и нет вето.
 
 ## Артефакты
 
