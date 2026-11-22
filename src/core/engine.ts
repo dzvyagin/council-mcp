@@ -220,11 +220,12 @@ export class CouncilSession {
           return { value: result.value };
         }
         if (result.error.kind === "cancelled" || isAborted(signal)) return undefined;
-        reason = result.error.kind;
+        // Причина видна в отчёте: вид ошибки и первая строка сообщения (лимит, 429, 5xx…).
+        reason = errorReason(result.error.kind, result.error.message);
         if (result.error.kind === "agent_exited") await this.dropParticipant(seat);
       } catch (error) {
         // Участник не запустился или упал вне хода.
-        reason = error instanceof Error ? error.message : String(error);
+        reason = errorReason("agent_error", error instanceof Error ? error.message : String(error));
         this.options.record?.({
           type: "ask",
           round,
@@ -264,4 +265,11 @@ export class CouncilSession {
 /** Сигнал может сработать во время await — читаем его заново, а не по сузившемуся типу. */
 function isAborted(signal: AbortSignal): boolean {
   return signal.aborted;
+}
+
+/** «вид: суть» — коротко, одной строкой, для отчёта и прогресса. */
+export function errorReason(kind: string, message: string): string {
+  const line = message.replace(/\s+/g, " ").trim();
+  if (line === "" || line === kind) return kind;
+  return `${kind}: ${line.length > 140 ? `${line.slice(0, 139)}…` : line}`;
 }

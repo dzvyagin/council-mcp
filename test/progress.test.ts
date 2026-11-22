@@ -26,3 +26,14 @@ describe("прогресс", () => {
     expect(text).toMatch(/B … 1 мин 05 с(\s|$)/);
   });
 });
+
+describe("причина отказа участника", () => {
+  it("вид и первая строка сообщения, коротко", async () => {
+    const { errorReason } = await import("../src/core/engine.js");
+    expect(errorReason("agent_error", '400 Bad Request\n{"error":"context_length_exceeded"}')).toBe(
+      'agent_error: 400 Bad Request {"error":"context_length_exceeded"}',
+    );
+    expect(errorReason("timeout", "")).toBe("timeout");
+    expect(errorReason("agent_error", "x".repeat(300)).length).toBeLessThan(170);
+  });
+});

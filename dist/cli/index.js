@@ -46701,10 +46701,10 @@ var CouncilSession = class {
           return { value: result.value };
         }
         if (result.error.kind === "cancelled" || isAborted(signal)) return void 0;
-        reason = result.error.kind;
+        reason = errorReason(result.error.kind, result.error.message);
         if (result.error.kind === "agent_exited") await this.dropParticipant(seat2);
       } catch (error62) {
-        reason = error62 instanceof Error ? error62.message : String(error62);
+        reason = errorReason("agent_error", error62 instanceof Error ? error62.message : String(error62));
         this.options.record?.({
           type: "ask",
           round,
@@ -46740,6 +46740,11 @@ var CouncilSession = class {
 };
 function isAborted(signal) {
   return signal.aborted;
+}
+function errorReason(kind, message) {
+  const line = message.replace(/\s+/g, " ").trim();
+  if (line === "" || line === kind) return kind;
+  return `${kind}: ${line.length > 140 ? `${line.slice(0, 139)}\u2026` : line}`;
 }
 
 // src/core/events.ts
@@ -49155,7 +49160,7 @@ async function deliberate(input2, deps) {
     const passed = (p.passed ?? true) && (status === "converged" || status === "majority") && p.score >= p.threshold && p.veto === void 0;
     const score = Math.round(p.score * 100) / 100;
     const gate = { threshold: p.threshold, passed, ...p.veto && { veto: p.veto } };
-    const summaries = session.summaries();
+    const summaries = session.summaries().map((p2) => p2.note === void 0 ? p2 : { ...p2, note: redactor.text(p2.note) });
     let adrPath;
     const adrByGoal = plan.goal === "decision" || plan.goal === "plan" || plan.goal === "implement";
     const wantAdr = input2.writeAdr ?? adrByGoal;

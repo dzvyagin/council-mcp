@@ -633,7 +633,9 @@ export async function deliberate(
       p.veto === undefined;
     const score = Math.round(p.score * 100) / 100;
     const gate = { threshold: p.threshold, passed, ...(p.veto && { veto: p.veto }) };
-    const summaries = session.summaries();
+    const summaries = session
+      .summaries()
+      .map((p) => (p.note === undefined ? p : { ...p, note: redactor.text(p.note) }));
 
     let adrPath: string | undefined;
     const adrByGoal = plan.goal === "decision" || plan.goal === "plan" || plan.goal === "implement";
