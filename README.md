@@ -58,11 +58,12 @@ opencode запускает не ваша оболочка, и переменн�
 сервис:
 
 ```bash
-rm -rf ~/.cache/opencode/npm/git-council-mcp-*
+find ~ -type d -name 'git-council-mcp-*' -path '*opencode/npm*' -prune -exec rm -rf {} + 2>/dev/null
 opencode service restart
 ```
 
-Если задан `XDG_CACHE_HOME`, кэш лежит в `$XDG_CACHE_HOME/opencode/npm/`.
+`find` ищет кэш везде в домашней папке: при заданном `XDG_CACHE_HOME` он лежит не в
+`~/.cache`.
 
 ## Как пользоваться
 

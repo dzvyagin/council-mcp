@@ -52,8 +52,8 @@
 входа — `dist/opencode/plugin.js`. В `package.json` нет зависимостей (всё в бандлах) и скриптов
 подготовки (`build`, `prepare`, `install` и т. п.): с ними npm внутри opencode пытается собирать
 пакет и падает, поэтому сборка называется `bundle`. Тест сверяет закоммиченный `dist/` со свежей
-сборкой. opencode кэширует git-плагин и сам его не обновляет: обновление — удалить
-`~/.cache/opencode/npm/git-council-mcp-*` и `opencode service restart` (плагин переустановится
+сборкой. opencode кэширует git-плагин и сам его не обновляет: обновление — удалить каталоги
+`git-council-mcp-*` в `$XDG_CACHE_HOME/opencode/npm/` (по умолчанию `~/.cache`) и `opencode service restart` (плагин переустановится
 из конфига), или новый тег.
 
 В каждом проекте плагин:
