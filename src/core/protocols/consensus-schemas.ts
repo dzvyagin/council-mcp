@@ -62,6 +62,10 @@ export type Revision = z.infer<typeof RevisionSchema>;
 export const FlawSchema = z.object({
   text: text(800),
   severity: z.enum(SEVERITIES),
+  veto: z
+    .boolean()
+    .optional()
+    .describe("Вето — только для critical и только если твоя роль даёт право вето"),
 });
 
 export const CritiqueSchema = z.object({
@@ -91,6 +95,17 @@ export const SynthesisSchema = z.object({
     )
     .max(12),
   open_questions: list(400),
+  plan: z
+    .array(
+      z.object({
+        step: text(300),
+        details: text(1_500),
+        files: z.array(text(300)).max(20).describe("Файлы, которые затронет шаг"),
+      }),
+    )
+    .max(20)
+    .optional()
+    .describe("План работ по шагам — обязателен для goal plan/implement"),
   confirmation: text(1_500)
     .optional()
     .describe("Как проверить, что решение внедрено и работает: тест, метрика, ревью"),
@@ -100,6 +115,16 @@ export const SynthesisSchema = z.object({
   confidence: z.number().min(0).max(1),
 });
 export type Synthesis = z.infer<typeof SynthesisSchema>;
+
+export const ResearchSchema = z.object({
+  findings: z
+    .array(z.object({ fact: text(600), source: text(300).describe("path:line или [inference]") }))
+    .max(20),
+  constraints: list(400),
+  options: z.array(z.object({ key: decisionKey, summary: text(600) })).max(8),
+  unknowns: list(400),
+});
+export type Research = z.infer<typeof ResearchSchema>;
 
 export const GroupingSchema = z.object({
   groups: z
@@ -136,6 +161,12 @@ export const TOOLS = {
     description:
       "Сдать итог совета: решение, обоснование, отвергнутые варианты, риски, вопросы, особое мнение.",
     schema: SynthesisSchema,
+  },
+  research: {
+    name: "submit_research",
+    description:
+      "Сдать результаты исследования: факты с источниками, ограничения, варианты, неизвестные.",
+    schema: ResearchSchema,
   },
   grouping: {
     name: "submit_grouping",

@@ -84,7 +84,7 @@ describe("артефакты запуска", () => {
     expect(adr).toContain(`Выбран вариант \`${KEY}\``);
     expect(adr).toContain("## Плюсы и минусы вариантов");
     expect(adr).toMatch(
-      /\| A \| архитектор распределённых систем \| `pg-partition-by-month` \| 0\.80 \| ok \|/,
+      /\| A \| (Архитектор распределённых систем|Архитектор данных \/ DBA|SRE) \| `pg-partition-by-month` \| 0\.80 \| ok \|/,
     );
     expect(adr).not.toMatch(/model-[abc]/);
 
@@ -286,9 +286,9 @@ describe("снапшоты", () => {
         score: 0.81,
         gate: { threshold: 0.75, passed: true },
         participants: [
-          { alias: "A", personas: [], state: "ok" },
-          { alias: "B", personas: [], state: "ok" },
-          { alias: "C", personas: [], state: "degraded", note: "1 ретрай: timeout" },
+          { alias: "A", personas: ["архитектор"], state: "ok" },
+          { alias: "B", personas: ["DBA"], state: "ok" },
+          { alias: "C", personas: ["SRE"], state: "degraded", note: "1 ретрай: timeout" },
         ],
         open_questions: ["Срок хранения?", "Кто владелец миграции?"],
         votes: [

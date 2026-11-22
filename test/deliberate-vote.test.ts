@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/core/config.js";
 import { deliberate, InputError } from "../src/core/deliberate.js";
 import type { CouncilEvent } from "../src/core/events.js";
+import { buildPanel, seatsPerModel } from "../src/core/panel.js";
 import { FakeDriver, vote } from "./fakes.js";
 import { baseEnv, fakeDeps } from "./helpers.js";
 
@@ -86,12 +87,37 @@ describe("deliberate: vote", () => {
     expect(r.report).toMatch(/✗ отказ \(agent_exited\)/);
   });
 
-  it("осталась одна модель — partial, гейт не пройден", async () => {
+  it("один голос из трёх — нет кворума (⌊3/2⌋ + 1 = 2)", async () => {
     const driver = new FakeDriver(
       { "model-a": { vote: [vote("gRPC", 0.9)] } },
       new Set(["model-b", "model-c"]),
     );
     const r = await run(driver);
+    expect(r.status).toBe("quorum_failed");
+    expect(r.decision).toBe("");
+    expect(r.gate.passed).toBe(false);
+    expect(r.warnings).toContain("нет кворума: проголосовали 1 из 3, нужно 2");
+  });
+
+  it("кворум набран персонами одной модели — partial, гейт не пройден", async () => {
+    // Две модели, панель 3: одна модель играет две персоны; вторая падает.
+    const cfg = loadConfig(fakeDeps({ ...baseEnv, COUNCIL_MODELS: "model-a,model-b" }));
+    const seats = buildPanel({
+      models: cfg.models,
+      panel: 3,
+      style: "balanced",
+      seed: "20261122-abc123",
+    });
+    const double = [...seatsPerModel(seats)].find(([, n]) => n === 2)![0];
+    const single = cfg.models.map((m) => m.id).find((id) => id !== double)!;
+    const driver = new FakeDriver(
+      { [double]: { vote: [vote("gRPC", 0.9), vote("gRPC", 0.8)] } },
+      new Set([single]),
+    );
+    const r = await deliberate(
+      { mode: "vote", question: "REST или gRPC?", options: OPTIONS },
+      { config: cfg, driver, runId: "20261122-abc123", artifacts: false },
+    );
     expect(r.status).toBe("partial");
     expect(r.gate.passed).toBe(false);
     expect(r.warnings).toContain("ответила только одна модель: решение не проходит гейт");

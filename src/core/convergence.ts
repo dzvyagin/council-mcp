@@ -1,3 +1,4 @@
+import { openFlaws } from "./gates.js";
 import type { Critique, Grouping, Revision } from "./protocols/consensus-schemas.js";
 
 /**
@@ -50,19 +51,9 @@ export function unresolvedCriticals(
   critiques: Map<string, Critique>,
   revisions: Map<string, Revision>,
 ): Unresolved[] {
-  const result: Unresolved[] = [];
-  for (const [critic, critique] of critiques) {
-    for (const review of critique.reviews) {
-      const revision = revisions.get(review.label);
-      const addressed = revision?.changes.some((c) => c.triggered_by === critic) ?? false;
-      if (addressed) continue;
-      for (const flaw of review.flaws) {
-        if (flaw.severity === "critical")
-          result.push({ target: review.label, critic, text: flaw.text });
-      }
-    }
-  }
-  return result;
+  return openFlaws(critiques, revisions)
+    .filter((f) => f.severity === "critical")
+    .map(({ target, critic, text }) => ({ target, critic, text }));
 }
 
 /** Проверка группировки судьи: каждый ключ ровно в одной группе, лишних ключей нет. */

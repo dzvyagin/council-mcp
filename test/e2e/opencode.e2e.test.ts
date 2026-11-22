@@ -112,10 +112,9 @@ describe.runIf(enabled && opencode)("e2e: opencode acp + фейковый про
     });
     expect(r.status).toBe("converged");
     expect(r.decision).toBe("Партиционировать таблицу платежей по месяцам");
-    expect(r.votes?.map((v) => v.choice)).toEqual([
-      "pg-partition-by-month",
-      "pg-partition-by-month",
-    ]);
+    // Панель 3 на двух моделях: одна модель играет две персоны в отдельных сессиях.
+    expect(r.votes?.map((v) => v.choice)).toEqual(Array(3).fill("pg-partition-by-month"));
+    expect(new Set(r.participants.map((p) => p.personas[0])).size).toBe(3);
     expect(r.participants.every((p) => p.state === "ok")).toBe(true);
     expect(r.adr_path).toMatch(/^docs\/adr\/\d{4}-/);
     expect(existsSync(join(workspace, r.adr_path!))).toBe(true);

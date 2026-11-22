@@ -222,16 +222,17 @@ describe("deliberate: consensus", () => {
     expect(r.report).toMatch(/✗ отказ/);
   });
 
-  it("осталась одна модель — partial без критики; никто не ответил — failed", async () => {
+  it("одно предложение из трёх — quorum_failed без синтеза; никто не ответил — failed", async () => {
     const key = "partition-by-month";
     const one = new FakeDriver(
       script({ "model-a": { propose: proposal(key), revise: [] } }),
       new Set(["model-b", "model-c"]),
     );
-    const partial = await run(one);
-    expect(partial.status).toBe("partial");
-    expect(partial.decision).toBe(`решение ${key}`);
-    expect(partial.gate.passed).toBe(false);
+    const r = await run(one);
+    expect(r.status).toBe("quorum_failed");
+    expect(r.decision).toBe("");
+    expect(r.gate.passed).toBe(false);
+    expect(r.warnings).toContain("нет кворума в раунде propose: ответили 1 из 3, нужно 2");
     expect(rounds(one)).toEqual(["propose"]);
 
     const failed = await run(new FakeDriver({}));

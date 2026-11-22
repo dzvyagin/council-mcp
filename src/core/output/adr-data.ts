@@ -84,6 +84,8 @@ export function consensusAdr(
     rejected: s?.rejected_options ?? [],
     risks: s?.risks ?? fallbackRisks.slice(0, 12),
     ...(s?.confirmation !== undefined && { confirmation: s.confirmation }),
+    ...(s?.plan !== undefined && { plan: s.plan }),
+    ...(outcome.veto && { veto: { persona: outcome.veto.persona, reason: outcome.veto.text } }),
     ...(s?.dissent !== undefined && { dissent: s.dissent }),
     openQuestions:
       s?.open_questions ?? uniq([...outcome.finals.values()].flatMap((f) => f.open_questions)),

@@ -19,7 +19,8 @@ const MAX_RATIONALE = 160;
 function seat(p: ParticipantSummary): string {
   const mark = p.state === "ok" ? "✓" : p.state === "degraded" ? "⚠ деградация" : "✗ отказ";
   const note = p.state !== "ok" && p.note ? ` (${p.note})` : "";
-  return `${markerFor(p.alias)} ${p.alias} ${mark}${note}`;
+  const persona = p.personas.length > 0 ? ` (${p.personas.join(", ")})` : "";
+  return `${markerFor(p.alias)} ${p.alias}${persona} ${mark}${note}`;
 }
 
 function clip(text: string, max: number): string {
@@ -33,10 +34,11 @@ export function renderReport(r: Omit<DeliberationResult, "report">): string {
   const lines = [
     `🏛 Council · ${r.mode} · участников ${r.participants.length}    run ${r.run_id}`,
     `Участники: ${r.participants.map(seat).join("   ")}`,
-    `Статус: ${STATUS_TEXT[r.status] ?? r.status} · score ${r.score.toFixed(2)} (${gate}) · ответили ${answered}/${r.participants.length}`,
+    `Статус: ${STATUS_TEXT[r.status] ?? r.status} · score ${r.score.toFixed(2)} (${gate}) · ${r.gate.veto ? `вето ${r.gate.veto.persona}` : "вето нет"} · кворум ${String(answered)}/${String(r.participants.length)}`,
     `Решение: ${r.decision || "—"}`,
   ];
-  if (r.dissent) lines.push(`Особое мнение: ${r.dissent}`);
+  if (r.gate.veto) lines.push(`Вето (${r.gate.veto.persona}): ${clip(r.gate.veto.reason, 200)}`);
+  if (r.dissent) lines.push(`Особое мнение: ${clip(r.dissent, 400)}`);
   if (r.votes && r.votes.length > 0) {
     lines.push(
       `Голоса: ${r.votes.map((v) => `${v.alias} ${clip(v.choice, 60)} ${v.confidence.toFixed(2)}`).join(" · ")}`,

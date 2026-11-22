@@ -73,6 +73,7 @@ export function critiquePrompt(
   c: Common,
   others: { label: string; proposal: Proposal | Revision }[],
   toolName: string,
+  canVeto = false,
 ): string {
   const labels = others.map((o) => o.label).join(", ");
   return buildPrompt({
@@ -81,6 +82,9 @@ export function critiquePrompt(
       `Разбери предложения других участников (метки ${labels}) из блока PROPOSALS по вопросу из блока QUESTION. Проверяй утверждения по коду проекта.`,
       "Для каждого предложения: сильные стороны, недостатки с серьёзностью и вопросы. Найди минимум один существенный недостаток или явно объясни, почему его нет.",
       "critical ставь только тому, что делает решение неприемлемым (потеря данных, нарушение требований регулятора, неработоспособность).",
+      canVeto
+        ? "Твоя роль даёт право вето: для critical-недостатка, с которым решение нельзя принимать, поставь veto: true. Решение будет отклонено, если автор не закроет недостаток в доработке. Не используй вето для спорных вопросов вкуса."
+        : "Поле veto не заполняй: у твоей роли нет права вето.",
       `reviews — ровно по одному на каждую метку (${labels}); ranking — все эти метки от лучшего к худшему.`,
     ].join("\n"),
     data: [
@@ -108,7 +112,7 @@ export function revisePrompt(
       [
         `### Критика от ${critic}`,
         ...review.strengths.map((s) => `+ ${s}`),
-        ...review.flaws.map((f) => `- [${f.severity}] ${f.text}`),
+        ...review.flaws.map((f) => `- [${f.severity}${f.veto === true ? ", ВЕТО" : ""}] ${f.text}`),
         ...review.questions.map((q) => `? ${q}`),
       ].join("\n"),
     )
@@ -120,6 +124,7 @@ export function revisePrompt(
       `Сводный рейтинг твоего предложения: ${rating}.`,
       "Менять позицию (decision_key) можно только если конкретный аргумент тебя убедил: тогда в changes укажи, что изменилось, почему и triggered_by — метку критика. Согласие без аргумента — нарушение.",
       "Если остаёшься при своём, ответь по существу на каждый critical-недостаток в design или changes.",
+      "Недостаток с ВЕТО отклонит решение, если ты его не закроешь: исправь предложение и укажи в changes triggered_by этого критика.",
       "Верни полное предложение (не только изменения).",
     ].join("\n"),
     data: [
@@ -138,6 +143,7 @@ export function synthesizePrompt(
   finals: { label: string; proposal: Proposal | Revision }[],
   verdict: string,
   toolName: string,
+  outputRules: string[] = [],
 ): string {
   return buildPrompt({
     ...withRole(c),
@@ -148,6 +154,7 @@ export function synthesizePrompt(
       "rationale — почему выбрано это решение, со ссылками на аргументы участников по меткам. rejected_options — отвергнутые варианты с причинами.",
       "Если решение не единогласно, dissent обязателен: позиция меньшинства, её аргументы и метки.",
       "confirmation — как проверить, что решение внедрено и работает (тест, метрика, ревью).",
+      ...outputRules,
     ].join("\n"),
     data: [
       { name: "question", content: c.question },
@@ -157,6 +164,20 @@ export function synthesizePrompt(
         content: finals.map((f) => renderProposal(f.label, f.proposal)).join("\n\n"),
       },
     ],
+    toolName,
+    nonce: c.nonce,
+  });
+}
+
+export function researchPrompt(c: Common, toolName: string): string {
+  return buildPrompt({
+    ...withRole(c),
+    task: [
+      "Это шаг исследования перед обсуждением: решение пока не предлагай.",
+      "Изучи проект по вопросу из блока QUESTION: что уже есть в коде, схеме данных, контрактах и ADR; какие ограничения следуют из кода; какие варианты решения вообще возможны; чего не хватает для решения.",
+      "findings — факты с источником path:line (вывод без источника помечай [inference]); constraints — ограничения; options — возможные варианты; unknowns — что неизвестно.",
+    ].join("\n"),
+    data: [{ name: "question", content: c.question }, ...c.context],
     toolName,
     nonce: c.nonce,
   });

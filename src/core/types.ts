@@ -12,6 +12,9 @@ export type RunStatus =
 
 export type Mode = "consensus" | "debate" | "vote" | "review";
 
+export const GOALS = ["advice", "decision", "plan", "implement", "review"] as const;
+export type Goal = (typeof GOALS)[number];
+
 export type SeatState = "ok" | "degraded" | "failed";
 
 export interface ParticipantSummary {
@@ -45,7 +48,7 @@ export interface DeliberationResult {
   decision: string;
   dissent?: string;
   score: number;
-  gate: { threshold: number; passed: boolean };
+  gate: { threshold: number; passed: boolean; veto?: { persona: string; reason: string } };
   participants: ParticipantSummary[];
   open_questions: string[];
   votes?: VoteRecord[];
@@ -60,6 +63,7 @@ export interface DeliberationResult {
 export interface SeatAssignment {
   alias: string;
   modelId: string;
+  persona: string;
 }
 
 export const toUsageSummary = (u: Usage, durationMs: number): UsageSummary => ({

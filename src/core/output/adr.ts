@@ -45,6 +45,8 @@ export interface AdrData {
   rejected: { key: string; why: string }[];
   risks: { risk: string; severity: string; mitigation?: string | undefined }[];
   confirmation?: string;
+  plan?: { step: string; details: string; files: string[] }[];
+  veto?: { persona: string; reason: string };
   dissent?: string;
   openQuestions: string[];
   participants: AdrParticipant[];
@@ -131,7 +133,9 @@ export function renderAdr(number: number, d: AdrData): string {
   const out: string[] = [
     `# ${id}. ${oneLine(d.title)}`,
     "",
-    `- Статус: proposed (council: ${d.status} — ${STATUS_TEXT[d.status]}, score ${d.score.toFixed(2)}, ${gate})`,
+    d.veto
+      ? `- Статус: rejected (council: vetoed — вето ${d.veto.persona}: ${oneLine(d.veto.reason)})`
+      : `- Статус: proposed (council: ${d.status} — ${STATUS_TEXT[d.status]}, score ${d.score.toFixed(2)}, ${gate})`,
     `- Дата: ${d.date}`,
     "- Решают: команда; совет даёт рекомендацию, решение принимает человек",
     `- Run: \`${d.transcript}\` (${d.mode}, run ${d.runId})`,
@@ -182,6 +186,14 @@ export function renderAdr(number: number, d: AdrData): string {
     d.confirmation?.trim() || "Способ проверки совет не предложил — определите при ревью ADR.",
   );
 
+  if (d.plan && d.plan.length > 0) {
+    out.push("", "## План работ", "");
+    d.plan.forEach((p, i) => {
+      out.push(`${String(i + 1)}. **${oneLine(p.step)}** — ${oneLine(p.details)}`);
+      if (p.files.length > 0) out.push(`   Файлы: ${p.files.map((f) => `\`${f}\``).join(", ")}`);
+    });
+  }
+
   const detailed = d.options.filter((o) => o.pros.length > 0 || o.cons.length > 0);
   if (detailed.length > 0) {
     out.push("", "## Плюсы и минусы вариантов");
@@ -225,7 +237,7 @@ async function updateIndex(dir: string, file: string, number: number, d: AdrData
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
   }
-  const row = `| [${String(number).padStart(4, "0")}](${file}) | ${cell(d.title)} | proposed (${d.status}) | ${d.date} |`;
+  const row = `| [${String(number).padStart(4, "0")}](${file}) | ${cell(d.title)} | ${d.veto ? "rejected" : "proposed"} (${d.status}) | ${d.date} |`;
   if (text === undefined) {
     const head = [
       "# Архитектурные решения",

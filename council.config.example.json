@@ -1,24 +1,51 @@
 {
   "language": "ru",
   "models": [
-    { "id": "model-a", "context": 128000, "output": 16000 },
-    { "id": "model-b", "effort": "high", "reasoningField": "reasoning_content" },
-    { "id": "model-c" }
+    {
+      "id": "model-a",
+      "context": 128000,
+      "output": 16000
+    },
+    {
+      "id": "model-b",
+      "effort": "high",
+      "reasoningField": "reasoning_content"
+    },
+    {
+      "id": "model-c"
+    }
   ],
-  "participant": { "agent": "auto", "roundTimeoutS": 900 },
+  "participant": {
+    "agent": "auto",
+    "roundTimeoutS": 900
+  },
   "defaults": {
     "panel": 3,
     "style": "balanced",
     "maxRounds": 2,
     "majorityThreshold": 0.7,
     "qualityThreshold": 0.75,
-    "budget": { "maxCalls": 40, "maxDurationS": 3600 }
+    "budget": {
+      "maxCalls": 40,
+      "maxDurationS": 3600
+    }
   },
-  "paths": { "adrDir": "docs/adr", "stateDir": ".council" },
+  "paths": {
+    "adrDir": "docs/adr",
+    "stateDir": ".council"
+  },
   "protectedPaths": [
     "**/migrations/**",
     "**/*.sql",
     "**/openapi*.{yml,yaml,json}",
     "docs/architecture/**"
-  ]
+  ],
+  "personas": {
+    "dba": {
+      "focus": "PostgreSQL 16: партиционирование, индексы, миграции без простоя"
+    },
+    "security": {
+      "vetoPower": true
+    }
+  }
 }

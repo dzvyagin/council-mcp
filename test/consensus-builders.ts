@@ -16,8 +16,9 @@ export const proposal = (key: string, confidence = 0.8, summary = `решени�
 });
 
 export interface CritiqueSpec {
-  /** Метки по порядку рейтинга; по умолчанию — все чужие в алфавитном порядке. */
   severity?: "critical" | "major" | "minor";
+  /** Наложить вето (critical) на все рецензируемые предложения. */
+  veto?: boolean;
 }
 
 /** Критика всех чужих меток из списка участников. */
@@ -30,7 +31,13 @@ export const critique = (all: string[], spec: CritiqueSpec = {}): FakeReply => (
       reviews: others.map((label) => ({
         label,
         strengths: ["понятно"],
-        flaws: [{ text: `недостаток у ${label}`, severity: spec.severity ?? "minor" }],
+        flaws: [
+          {
+            text: `недостаток у ${label}`,
+            severity: spec.veto ? "critical" : (spec.severity ?? "minor"),
+            ...(spec.veto && { veto: true }),
+          },
+        ],
         questions: [],
       })),
       ranking: others,

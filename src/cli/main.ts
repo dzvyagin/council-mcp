@@ -7,14 +7,24 @@ import {
   loadConfig,
   type ConfigDeps,
   type CouncilConfig,
+  type PanelSize,
+  type Style,
 } from "../core/config.js";
-import { deliberate, InputError } from "../core/deliberate.js";
+import {
+  BudgetError,
+  deliberate,
+  InputError,
+  planRun,
+  type DeliberateInput,
+} from "../core/deliberate.js";
+import { renderEstimate } from "../core/estimate.js";
+import { seatsPerModel } from "../core/panel.js";
 import { probeEndpoint } from "../core/endpoint.js";
 import type { CouncilEvent } from "../core/events.js";
 import { defaultRunId } from "../core/jobs.js";
 import { formatDuration, markerFor } from "../core/output/format.js";
 import type { ParticipantDriver } from "../core/participant.js";
-import type { Mode } from "../core/types.js";
+import type { Goal, Mode } from "../core/types.js";
 
 export interface CliIO {
   stdout: (text: string) => void;
@@ -32,8 +42,11 @@ export interface CliIO {
 const HELP = `council — совет моделей для архитектурных решений
 
 Использование:
-  council run --mode consensus|vote --question "<вопрос>" [--notes "<ограничения>"]
-              [--file <путь>]... [--option A --option B] [--max-rounds N] [--diff-file <путь>] [--json]
+  council run [--mode consensus|vote] --question "<вопрос>" [--notes "<ограничения>"] [--file <путь>]...
+              [--option A --option B] [--panel 3|5|7] [--goal advice|decision|plan|implement|review]
+              [--style balanced|adversarial|red-team|executive|implementation] [--research-first]
+              [--max-rounds N] [--diff-file <путь>] [--budget-calls N] [--budget-tokens N]
+              [--confirm-budget] [--dry-run] [--no-adr] [--adr-title "…"] [--json]
   council doctor      проверить конфиг, эндпоинт, модели и агента-участника
   council info        показать конфигурацию (без секретов)
   council help        эта справка
@@ -89,19 +102,36 @@ export async function main(argv: string[], io: CliIO): Promise<number> {
   }
 }
 
+const intArg = (name: string, value: string | undefined): number | undefined => {
+  if (value === undefined) return undefined;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) throw new InputError(`--${name}: целое неотрицательное число`);
+  return n;
+};
+
 async function run(args: string[], io: CliIO): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
     allowPositionals: true,
     strict: true,
     options: {
-      mode: { type: "string", default: "vote" },
+      mode: { type: "string", default: "consensus" },
       question: { type: "string", short: "q" },
       option: { type: "string", multiple: true },
       notes: { type: "string" },
       file: { type: "string", multiple: true },
       "max-rounds": { type: "string" },
       "diff-file": { type: "string" },
+      panel: { type: "string" },
+      goal: { type: "string" },
+      style: { type: "string" },
+      "research-first": { type: "boolean", default: false },
+      "budget-calls": { type: "string" },
+      "budget-tokens": { type: "string" },
+      "confirm-budget": { type: "boolean", default: false },
+      "dry-run": { type: "boolean", default: false },
+      "no-adr": { type: "boolean", default: false },
+      "adr-title": { type: "string" },
       json: { type: "boolean", default: false },
     },
   });
@@ -110,35 +140,75 @@ async function run(args: string[], io: CliIO): Promise<number> {
   const question = values.question ?? positionals.join(" ");
   if (!question.trim()) throw new InputError('нужен вопрос: --question "…"');
 
-  const maxRounds = values["max-rounds"] === undefined ? undefined : Number(values["max-rounds"]);
-  if (maxRounds !== undefined && !Number.isInteger(maxRounds))
-    throw new InputError("--max-rounds: целое число");
+  const maxRounds = intArg("max-rounds", values["max-rounds"]);
+  const panel = intArg("panel", values.panel);
+  const maxCalls = intArg("budget-calls", values["budget-calls"]);
+  const maxTokens = intArg("budget-tokens", values["budget-tokens"]);
   const diffFile = values["diff-file"];
   const diff = diffFile === undefined ? undefined : await readFile(diffFile, "utf8");
 
+  const input: DeliberateInput = {
+    mode,
+    question,
+    ...(values.option && { options: values.option }),
+    ...(values.notes !== undefined && { notes: values.notes }),
+    ...(values.file && { files: values.file }),
+    ...(maxRounds !== undefined && { maxRounds }),
+    ...(diff !== undefined && { diff }),
+    ...(panel !== undefined && { panel: panel as PanelSize }),
+    ...(values.goal !== undefined && { goal: values.goal as Goal }),
+    ...(values.style !== undefined && { style: values.style as Style }),
+    ...(values["research-first"] && { researchFirst: true }),
+    ...((maxCalls !== undefined || maxTokens !== undefined) && { budget: { maxCalls, maxTokens } }),
+    ...(values["confirm-budget"] && { confirmBudget: true }),
+    ...(values["no-adr"] && { writeAdr: false }),
+    ...(values["adr-title"] !== undefined && { adrTitle: values["adr-title"] }),
+  };
+
   const config = loadConfig(io.configDeps());
+  const runId = defaultRunId();
+  if (values["dry-run"]) {
+    const plan = await planRun(input, config, runId);
+    if (values.json) {
+      io.stdout(
+        `${JSON.stringify({ dry_run: true, estimate: plan.estimate, over_budget: plan.overBudget, panel: plan.seats.map((s) => s.persona.id) }, null, 2)}\n`,
+      );
+    } else {
+      const perModel = [...seatsPerModel(plan.seats).values()];
+      io.stdout(
+        [
+          `🏛 Council · ${mode} · dry run (модели не вызываются)`,
+          `Панель (${String(plan.seats.length)}): ${plan.seats.map((s) => s.persona.name).join(", ")}`,
+          `Мест на модель: ${perModel.join(" / ")} · goal ${plan.goal} · style ${plan.style} · max_rounds ${String(plan.maxRounds)}`,
+          renderEstimate(plan.estimate),
+          ...(plan.overBudget.length > 0
+            ? [`⚠ Превышение бюджета: ${plan.overBudget.join("; ")}`]
+            : []),
+        ].join("\n") + "\n",
+      );
+    }
+    return 0;
+  }
+
   const driver = io.makeDriver(config);
   try {
-    const result = await deliberate(
-      {
-        mode,
-        question,
-        ...(values.option && { options: values.option }),
-        ...(values.notes !== undefined && { notes: values.notes }),
-        ...(values.file && { files: values.file }),
-        ...(maxRounds !== undefined && { maxRounds }),
-        ...(diff !== undefined && { diff }),
-      },
-      {
-        config,
-        driver,
-        runId: defaultRunId(),
-        emit: progressPrinter(io),
-        ...(io.signal && { signal: io.signal }),
-      },
-    );
+    const result = await deliberate(input, {
+      config,
+      driver,
+      runId,
+      emit: progressPrinter(io),
+      ...(io.signal && { signal: io.signal }),
+    });
     io.stdout(values.json ? `${JSON.stringify(result, null, 2)}\n` : `${result.report}\n`);
     return result.status === "failed" ? 1 : 0;
+  } catch (e) {
+    if (e instanceof BudgetError) {
+      io.stderr(
+        `council: ${e.message}\nПовторите с --confirm-budget, чтобы запустить всё равно.\n`,
+      );
+      return 3;
+    }
+    throw e;
   } finally {
     await driver.dispose();
   }

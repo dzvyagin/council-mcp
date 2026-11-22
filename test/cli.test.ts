@@ -71,7 +71,18 @@ describe("CLI", () => {
 
   it("run --json отдаёт структурированный результат", async () => {
     const { code, out } = await run(
-      ["run", "-q", "REST или gRPC?", "--option", "REST", "--option", "gRPC", "--json"],
+      [
+        "run",
+        "--mode",
+        "vote",
+        "-q",
+        "REST или gRPC?",
+        "--option",
+        "REST",
+        "--option",
+        "gRPC",
+        "--json",
+      ],
       baseEnv,
     );
     expect(code).toBe(0);
@@ -95,6 +106,38 @@ describe("CLI", () => {
     );
     expect(code).toBe(1);
     expect(out).toMatch(/Статус: failed/);
+  });
+
+  it("run --dry-run: состав панели и прогноз без вызовов моделей", async () => {
+    let opened = false;
+    const { code, out } = await run(
+      ["run", "-q", "Как партиционировать?", "--panel", "5", "--style", "red-team", "--dry-run"],
+      baseEnv,
+      {
+        makeDriver: () => {
+          opened = true;
+          return new FakeDriver({});
+        },
+      },
+    );
+    expect(code).toBe(0);
+    expect(opened).toBe(false);
+    expect(out).toMatch(/dry run \(модели не вызываются\)/);
+    expect(out).toMatch(
+      /Панель \(5\): Архитектор распределённых систем, Red team: внешний атакующий/,
+    );
+    expect(out).toMatch(/Мест на модель: [12] \/ [12] \/ [12] · goal decision · style red-team/);
+    expect(out).toMatch(/^Прогноз: 16–29 вызовов/m);
+    expect(out).not.toMatch(/model-[abc]/);
+  });
+
+  it("прогноз выше бюджета — код 3 и подсказка про --confirm-budget", async () => {
+    const r = await run(["run", "-q", "x", "--budget-calls", "3"], baseEnv);
+    expect(r.code).toBe(3);
+    expect(r.err).toMatch(/прогноз превышает бюджет: вызовов до 19 при лимите 3/);
+    expect(r.err).toMatch(/--confirm-budget/);
+    expect((await run(["run", "-q", "x", "--panel", "4"], baseEnv)).code).toBe(2);
+    expect((await run(["run", "-q", "x", "--goal", "nope"], baseEnv)).code).toBe(2);
   });
 
   it("doctor: эндпоинт, модели и агент", async () => {

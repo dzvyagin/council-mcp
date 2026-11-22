@@ -1,5 +1,6 @@
 import { aliasFor, shuffle } from "./anonymize.js";
 import type { ModelConfig } from "./config.js";
+import type { Persona, SeatSpec } from "./panel.js";
 import type { EventSink } from "./events.js";
 import { createLimiter } from "./limit.js";
 import {
@@ -22,6 +23,7 @@ import type { ParticipantSummary, SeatAssignment, SeatState } from "./types.js";
 export interface Seat {
   alias: string;
   model: ModelConfig;
+  persona: Persona;
   state: SeatState;
   note?: string;
   participant?: Participant;
@@ -30,7 +32,8 @@ export interface Seat {
 
 export interface CouncilSessionOptions {
   driver: ParticipantDriver;
-  models: ModelConfig[];
+  /** Места панели (персона + модель) в порядке персон; метки раздаются перемешиванием по seed. */
+  seats: SeatSpec[];
   tools: AnswerTool[];
   /** Seed перемешивания — run_id: повторный прогон даёт то же распределение меток. */
   seed: string;
@@ -52,17 +55,25 @@ export class CouncilSession {
 
   constructor(private readonly options: CouncilSessionOptions) {
     this.retries = options.retries ?? 1;
-    this.seats = shuffle(options.models, options.seed).map((model, i) => ({
+    this.seats = shuffle(options.seats, options.seed).map((spec, i) => ({
       alias: aliasFor(i),
-      model,
+      model: spec.model,
+      persona: spec.persona,
       state: "ok",
       usage: emptyUsage(),
     }));
-    for (const m of options.models) this.limiters.set(m.id, createLimiter(m.maxConcurrency));
+    for (const s of options.seats) {
+      if (!this.limiters.has(s.model.id))
+        this.limiters.set(s.model.id, createLimiter(s.model.maxConcurrency));
+    }
   }
 
   get assignments(): SeatAssignment[] {
-    return this.seats.map((s) => ({ alias: s.alias, modelId: s.model.id }));
+    return this.seats.map((s) => ({ alias: s.alias, modelId: s.model.id, persona: s.persona.id }));
+  }
+
+  seat(alias: string): Seat | undefined {
+    return this.seats.find((s) => s.alias === alias);
   }
 
   get activeSeats(): Seat[] {
@@ -81,7 +92,7 @@ export class CouncilSession {
   summaries(): ParticipantSummary[] {
     return this.seats.map((s) => ({
       alias: s.alias,
-      personas: [],
+      personas: [s.persona.short],
       state: s.state,
       ...(s.note !== undefined && { note: s.note }),
     }));

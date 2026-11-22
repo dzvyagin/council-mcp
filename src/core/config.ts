@@ -99,6 +99,19 @@ export const ConfigFileSchema = z
     defaults: DefaultsFileSchema.optional(),
     paths: PathsFileSchema.optional(),
     protectedPaths: z.array(z.string().min(1)).optional(),
+    personas: z
+      .record(
+        z.string(),
+        z
+          .object({
+            name: z.string().trim().min(1).max(100).optional(),
+            short: z.string().trim().min(1).max(40).optional(),
+            focus: z.string().trim().min(1).max(600).optional(),
+            vetoPower: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -152,6 +165,16 @@ export interface CouncilConfig {
   /** Абсолютные пути внутри workspace. */
   paths: { adrDir: string; stateDir: string };
   protectedPaths: string[];
+  /** Переопределения персон (имя, фокус, право вето) по id из каталога. */
+  personas: Record<
+    string,
+    {
+      name?: string | undefined;
+      short?: string | undefined;
+      focus?: string | undefined;
+      vetoPower?: boolean | undefined;
+    }
+  >;
   guard: boolean;
   autoRouter: (typeof AUTO_ROUTER_MODES)[number];
   logLevel: (typeof LOG_LEVELS)[number];
@@ -364,6 +387,7 @@ export function loadConfig(deps: ConfigDeps = nodeConfigDeps()): CouncilConfig {
     },
     paths,
     protectedPaths: file.protectedPaths ?? DEFAULT_PROTECTED_PATHS,
+    personas: file.personas ?? {},
     guard: env.COUNCIL_GUARD !== "off",
     autoRouter: env.COUNCIL_AUTO_ROUTER ?? "suggest",
     logLevel: env.COUNCIL_LOG_LEVEL ?? "info",
