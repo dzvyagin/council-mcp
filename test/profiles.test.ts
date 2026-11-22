@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { loadConfig } from "../src/core/config.js";
+import { parseVersion } from "../src/drivers/acp/check.js";
 import { plural } from "../src/core/output/format.js";
 import {
   baseEnv as childBaseEnv,
@@ -209,5 +210,17 @@ describe("gitignoreToPatterns", () => {
 
   it("строка «*» не запрещает весь проект", () => {
     expect(patterns).not.toContain("*");
+  });
+});
+
+describe("parseVersion", () => {
+  it.each([
+    ["2.3.2", "2.3.2"],
+    ["v2.3.2\n", "2.3.2"],
+    ["opencode v2.3.2", "2.3.2"],
+    ["opencode 1.19.6 (abc)", "1.19.6"],
+    ["unknown", undefined],
+  ])("%s", (input, expected) => {
+    expect(parseVersion(input)).toBe(expected);
   });
 });

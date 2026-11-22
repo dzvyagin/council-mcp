@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 import {
@@ -19,7 +20,10 @@ import {
 } from "../core/deliberate.js";
 import { renderEstimate } from "../core/estimate.js";
 import { seatsPerModel } from "../core/panel.js";
-import { probeEndpoint } from "../core/endpoint.js";
+import { renderDoctor, runDoctor, type Check } from "../core/doctor.js";
+import { route } from "../core/router.js";
+import { collectUsage, renderUsage } from "../core/usage.js";
+import { HOSTS, renderSetup, runSetup, type Host } from "./setup.js";
 import type { CouncilEvent } from "../core/events.js";
 import { defaultRunId } from "../core/jobs.js";
 import { formatDuration, markerFor } from "../core/output/format.js";
@@ -32,8 +36,11 @@ export interface CliIO {
   configDeps: () => ConfigDeps;
   /** Драйвер участников; в тестах — фейк. Бросает ProfileError, если агент не найден. */
   makeDriver: (config: CouncilConfig) => ParticipantDriver;
-  /** Описание агента для doctor (например, версия opencode). */
-  describeAgent?: (config: CouncilConfig) => Promise<string>;
+  /** Проверка агента-участника для doctor. */
+  checkAgent?: (config: CouncilConfig) => Promise<Check[]>;
+  which?: (command: string) => string | undefined;
+  /** Абсолютный путь к бандлу — для команды MCP-сервера в setup. */
+  bundlePath?: string;
   fetch?: typeof fetch;
   signal?: AbortSignal;
   debug: boolean;
@@ -50,7 +57,13 @@ const HELP = `council — совет моделей для архитектур�
               [--confirm-budget] [--dry-run] [--no-adr] [--adr-title "…"] [--json]
   council mcp [--http [--host 127.0.0.1] [--port 8765]] [--wait-s 45]
                       MCP-сервер (stdio по умолчанию; логи в stderr)
-  council doctor      проверить конфиг, эндпоинт, модели и агента-участника
+  council setup [--host opencode|dsh|claude|all] [--force]
+                      подготовить проект: команды, агенты, Skill, AGENTS.md, конфиг, .gitignore
+  council doctor      проверить конфиг, эндпоинт, модели, агента-участника, права, окружение
+  council usage [--days N] [--json]
+                      фактический расход по моделям, режимам, персонам и дням
+  council route "<запрос>"
+                      какую команду совета выбрать для запроса
   council info        показать конфигурацию (без секретов)
   council help        эта справка
 
@@ -83,6 +96,15 @@ export async function main(argv: string[], io: CliIO): Promise<number> {
       case "doctor":
         parseArgs({ args: rest, strict: true });
         return await doctor(io);
+      case "setup":
+        return await setup(rest, io);
+      case "usage":
+        return await usage(rest, io);
+      case "route": {
+        const { positionals } = parseArgs({ args: rest, strict: true, allowPositionals: true });
+        io.stdout(`${JSON.stringify(route(positionals.join(" ")), null, 2)}\n`);
+        return 0;
+      }
       case "run":
         return await run(rest, io);
       default:
@@ -255,40 +277,70 @@ function progressPrinter(io: CliIO): (event: CouncilEvent) => void {
 
 async function doctor(io: CliIO): Promise<number> {
   const config = loadConfig(io.configDeps());
-  const state = { ok: true };
-  const line = (good: boolean, text: string) => {
-    if (!good) state.ok = false;
-    io.stdout(`${good ? "✓" : "✗"} ${text}\n`);
-  };
-  line(
-    true,
-    `конфиг: ${config.configPath ?? "только env"} · модели: ${config.models.map((m) => m.id).join(", ")}`,
-  );
+  const checks = await runDoctor(config, {
+    ...(io.fetch && { fetch: io.fetch }),
+    checkAgent: io.checkAgent ?? (() => Promise.resolve([])),
+    which: io.which ?? (() => undefined),
+  });
+  io.stdout(`${renderDoctor(checks)}\n`);
+  return checks.some((c) => c.level === "fail") ? 1 : 0;
+}
 
-  const probe = await probeEndpoint(config, io.fetch ?? fetch);
-  if (!probe.ok) {
-    line(false, `эндпоинт ${config.endpoint.baseUrl}: ${probe.error}`);
-  } else {
-    line(true, `эндпоинт ${config.endpoint.baseUrl}: доступен, моделей ${probe.models.length}`);
-    for (const m of config.models) {
-      const found = probe.models.find((p) => p.id === m.id);
-      const ctx =
-        found?.context !== undefined
-          ? ` · контекст ${String(found.context)} (в конфиге ${String(m.context)})`
-          : "";
-      line(found !== undefined, `модель ${m.id}${found ? ctx : ": нет в списке /models"}`);
-    }
-  }
-
+async function setup(args: string[], io: CliIO): Promise<number> {
+  const { values } = parseArgs({
+    args,
+    strict: true,
+    options: {
+      host: { type: "string", multiple: true },
+      force: { type: "boolean", default: false },
+    },
+  });
+  const requested = values.host ?? ["opencode"];
+  const hosts = requested.includes("all") ? [...HOSTS] : requested;
+  const bad = hosts.filter((h) => !(HOSTS as readonly string[]).includes(h));
+  if (bad.length > 0) throw new InputError(`--host: ${HOSTS.join(" | ")} | all`);
+  const deps = io.configDeps();
+  const workspace = resolve(deps.cwd, deps.env.COUNCIL_WORKSPACE ?? ".");
+  const models = deps.env.COUNCIL_MODELS?.split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const result = await runSetup({
+    workspace,
+    hosts: hosts as Host[],
+    force: values.force,
+    bundlePath: io.bundlePath ?? "council",
+    ...(models && { models }),
+  });
+  io.stdout(`${renderSetup(result)}\n`);
   try {
-    const driver = io.makeDriver(config);
-    const detail = io.describeAgent ? await io.describeAgent(config) : "";
-    line(true, `участники: ${driver.name}${detail ? ` · ${detail}` : ""}`);
-    await driver.dispose();
+    loadConfig(deps);
   } catch (e) {
-    line(false, `участники: ${(e as Error).message}`);
+    if (e instanceof ConfigError) {
+      io.stdout(`\n${e.message}\n`);
+      return 0;
+    }
+    throw e;
   }
-  return state.ok ? 0 : 1;
+  io.stdout("\n");
+  return doctor(io);
+}
+
+async function usage(args: string[], io: CliIO): Promise<number> {
+  const { values } = parseArgs({
+    args,
+    strict: true,
+    options: { days: { type: "string" }, json: { type: "boolean", default: false } },
+  });
+  const config = loadConfig(io.configDeps());
+  const days = values.days === undefined ? undefined : Number(values.days);
+  if (days !== undefined && (!Number.isInteger(days) || days <= 0))
+    throw new InputError("--days: целое положительное число");
+  const report = await collectUsage(
+    config.paths.stateDir,
+    days === undefined ? {} : { sinceDays: days },
+  );
+  io.stdout(values.json ? `${JSON.stringify(report, null, 2)}\n` : `${renderUsage(report)}\n`);
+  return 0;
 }
 
 function isUsageError(error: unknown): error is Error {

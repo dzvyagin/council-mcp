@@ -7,7 +7,10 @@ import { renderEstimate } from "../core/estimate.js";
 import type { JobSnapshot } from "../core/jobs.js";
 import { PERSONAS, STYLE_PERSONAS } from "../core/panel.js";
 import { GOALS, type DeliberationResult } from "../core/types.js";
+import { renderDoctor, runDoctor } from "../core/doctor.js";
+import { route } from "../core/router.js";
 import { readDecisions } from "../core/state/files.js";
+import { collectUsage, renderUsage } from "../core/usage.js";
 import { WorkflowError } from "../core/workflow/machine.js";
 import { AUTONOMY, renderState } from "../core/workflow/state.js";
 import { ProfileError } from "../drivers/acp/profiles.js";
@@ -371,13 +374,82 @@ export function buildMcpServer(runtime: CouncilRuntime, defaultWaitS = DEFAULT_W
   );
 
   server.registerTool(
+    "council_doctor",
+    {
+      title: "Совет: диагностика",
+      description:
+        "Проверить конфиг, эндпоинт и модели, агента-участника, ripgrep, git, права на запись в docs/adr и .council.",
+      inputSchema: z.object({}),
+    },
+    async () => {
+      const config = configOr();
+      if (!config) return configError();
+      const checks = await runDoctor(config, {
+        checkAgent: runtime.settings.checkAgent ?? (() => Promise.resolve([])),
+        which: runtime.settings.which ?? (() => undefined),
+      });
+      return { ...text(renderDoctor(checks)), structuredContent: { checks } };
+    },
+  );
+
+  server.registerTool(
+    "council_usage",
+    {
+      title: "Совет: расход",
+      description:
+        "Фактический расход совета по моделям, режимам, персонам и дням (токены и вызовы).",
+      inputSchema: z.object({ since_days: z.number().int().positive().optional() }),
+    },
+    async (args) => {
+      const config = configOr();
+      if (!config) return configError();
+      const report = await collectUsage(
+        config.paths.stateDir,
+        args.since_days === undefined ? {} : { sinceDays: args.since_days },
+      );
+      return {
+        ...text(renderUsage(report)),
+        structuredContent: report as unknown as Record<string, unknown>,
+      };
+    },
+  );
+
+  server.registerTool(
+    "council_route",
+    {
+      title: "Совет: выбор команды",
+      description:
+        "По запросу подобрать команду совета и параметры (для /council-auto). none — совет не нужен.",
+      inputSchema: z.object({ request: z.string().min(1).max(20_000) }),
+    },
+    (args) => {
+      const r = route(args.request);
+      const lead =
+        r.command === "none"
+          ? `Совет не нужен: ${r.reason}.`
+          : `Команда: /${r.command} (${r.confidence}) — ${r.reason}. Параметры: ${JSON.stringify(r.args)}`;
+      return { ...text(lead), structuredContent: r as unknown as Record<string, unknown> };
+    },
+  );
+
+  server.registerTool(
     "council_info",
     {
       title: "Совет: конфигурация",
-      description: "Конфигурация совета без секретов: модели, персоны, стили, лимиты.",
-      inputSchema: z.object({}),
+      description:
+        "Конфигурация совета без секретов: модели, персоны, стили, лимиты. models — переопределить состав на эту сессию сервера (минимум две), reset — вернуть состав из конфига.",
+      inputSchema: z.object({
+        models: z.array(z.string().min(1).max(200)).max(10).optional(),
+        reset: z.boolean().optional(),
+      }),
     },
-    () => {
+    (args) => {
+      try {
+        if (args.reset === true) runtime.setModels(undefined);
+        else if (args.models) runtime.setModels(args.models);
+      } catch (e) {
+        return failure(e);
+      }
       const state = runtime.config();
       if (!state.ok) return configError();
       const info = {
@@ -501,7 +573,7 @@ ${renderState(state, decisions)}`),
     },
   );
 
-  registerPrompts(server);
+  registerPrompts(server, runtime);
   return server;
 }
 
@@ -510,7 +582,7 @@ ${renderState(state, decisions)}`),
  * opencode делит текст команды по пробелам по аргументам: вопрос с пробелами — в кавычках
  * (или используйте файловые команды из integrations/opencode — они принимают весь текст).
  */
-function registerPrompts(server: McpServer): void {
+function registerPrompts(server: McpServer, runtime: CouncilRuntime): void {
   const request = z.object({
     request: z.string().describe("Вопрос совету (в кавычках, если с пробелами)"),
   });
@@ -572,6 +644,17 @@ function registerPrompts(server: McpServer): void {
     ({ request: q }) =>
       prompt(
         `Проведи задачу через Double Diamond: council_workflow action "start" с этой задачей (autonomy supervised, если не сказано иное), затем advance по фазам. После каждой фазы показывай report и смотри next: await_user — жди подтверждения; gate_failed — покажи причину и варианты. В develop реализуй PLAN.md только внутри worktree и передай git diff в phase_input.diff.\n\nЗадача: ${q}`,
+      ),
+  );
+  server.registerPrompt(
+    "setup",
+    {
+      title: "Совет: установка в проект",
+      description: "Команды, агенты, Skill, AGENTS.md, конфиг и .gitignore для совета",
+    },
+    () =>
+      prompt(
+        `Подготовь проект к работе с советом: выполни в терминале \`node ${JSON.stringify(runtime.settings.bundlePath ?? "<путь к council-mcp>/dist/cli/index.js").slice(1, -1)} setup --host opencode\` в корне проекта (добавь --host claude или --host dsh, если пользователь работает в этих хостах). Покажи вывод. Затем вызови council_doctor и покажи результат; при ошибках подскажи, что исправить (переменные COUNCIL_BASE_URL, COUNCIL_API_KEY, COUNCIL_MODELS задаются в окружении, не в файлах).`,
       ),
   );
   server.registerPrompt(

@@ -4,7 +4,14 @@ import { join, relative } from "node:path";
 import type { Logger } from "pino";
 
 import { ConfigError, loadConfig, type ConfigDeps, type CouncilConfig } from "../core/config.js";
-import { BudgetError, deliberate, planRun, type DeliberateInput } from "../core/deliberate.js";
+import {
+  BudgetError,
+  deliberate,
+  InputError,
+  planRun,
+  type DeliberateInput,
+} from "../core/deliberate.js";
+import type { Check } from "../core/doctor.js";
 import { renderEstimate } from "../core/estimate.js";
 import type { CouncilEvent } from "../core/events.js";
 import { defaultRunId, JobRunner, type JobSnapshot } from "../core/jobs.js";
@@ -28,6 +35,11 @@ export interface RuntimeOptions {
   configDeps: () => ConfigDeps;
   makeDriver: (config: CouncilConfig) => ParticipantDriver;
   logger: Logger;
+  /** Для council_doctor: проверка агента-участника и поиск программ в PATH. */
+  checkAgent?: (config: CouncilConfig) => Promise<Check[]>;
+  which?: (command: string) => string | undefined;
+  /** Абсолютный путь к бандлу (prompt setup). */
+  bundlePath?: string;
   now?: () => number;
   newRunId?: () => string;
 }
@@ -56,8 +68,41 @@ export class CouncilRuntime {
     return this.options.logger;
   }
 
-  /** Конфиг читается при первом обращении и перечитывается, пока он с ошибкой. */
+  /** Состав моделей на сессию сервера (/council-models): поверх конфига, до перезапуска. */
+  private modelsOverride: string[] | undefined;
+
+  get settings(): RuntimeOptions {
+    return this.options;
+  }
+
+  setModels(ids: string[] | undefined): void {
+    if (ids !== undefined) {
+      const uniq = [...new Set(ids.map((i) => i.trim()).filter(Boolean))];
+      if (uniq.length < 2) throw new InputError("models: нужно минимум две разные модели");
+      this.modelsOverride = uniq;
+    } else {
+      this.modelsOverride = undefined;
+    }
+  }
+
+  /** Конфиг (с переопределением состава моделей на сессию, если оно есть). */
   config(): ConfigState {
+    const base = this.loadBase();
+    if (!base.ok || this.modelsOverride === undefined) return base;
+    const known = new Map(base.config.models.map((m) => [m.id, m]));
+    const template = base.config.models[0];
+    const models = this.modelsOverride.map(
+      (id) =>
+        known.get(id) ?? {
+          ...(template ?? { context: 32_000, output: 8_000, maxConcurrency: 1 }),
+          id,
+        },
+    );
+    return { ok: true, config: { ...base.config, models } };
+  }
+
+  /** Конфиг читается при первом обращении и перечитывается, пока он с ошибкой. */
+  private loadBase(): ConfigState {
     if (this.state?.ok) return this.state;
     try {
       this.state = { ok: true, config: loadConfig(this.options.configDeps()) };

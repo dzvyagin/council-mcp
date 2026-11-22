@@ -1,9 +1,9 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 import { nodeConfigDeps, type CouncilConfig } from "../core/config.js";
 import { AcpDriver } from "../drivers/acp/driver.js";
-import { resolveProfile } from "../drivers/acp/profiles.js";
+import { checkAgent } from "../drivers/acp/check.js";
+import { which } from "../drivers/acp/profiles.js";
 import { main } from "./main.js";
 import { runMcp } from "./mcp.js";
 
@@ -40,18 +40,9 @@ async function runCli(): Promise<void> {
     stderr: (text) => process.stderr.write(text),
     configDeps: nodeConfigDeps,
     makeDriver,
-    describeAgent: async (config) => {
-      const profile = resolveProfile(config);
-      if (profile.kind !== "opencode") return profile.label;
-      try {
-        const { stdout } = await promisify(execFile)("opencode", ["--version"], {
-          timeout: 15_000,
-        });
-        return `opencode ${stdout.trim()}`;
-      } catch {
-        return "версию opencode определить не удалось";
-      }
-    },
+    checkAgent,
+    which: (command) => which(command),
+    bundlePath: fileURLToPath(import.meta.url),
     signal: controller.signal,
     debug: process.env.COUNCIL_DEBUG === "1",
   });

@@ -127,9 +127,12 @@ describe("MCP-сервер council", () => {
     expect(tools.map((t) => t.name).sort()).toEqual([
       "council_cancel",
       "council_deliberate",
+      "council_doctor",
       "council_estimate",
       "council_get_run",
       "council_info",
+      "council_route",
+      "council_usage",
       "council_wait",
       "council_workflow",
     ]);
@@ -140,6 +143,7 @@ describe("MCP-сервер council", () => {
       "debate",
       "embrace",
       "review",
+      "setup",
       "vote",
     ]);
     const got = await s.rpc("prompts/get", {
@@ -269,6 +273,30 @@ describe("MCP-сервер council", () => {
       wait_s: 30,
     });
     expect(v.structured).toMatchObject({ status: "majority", decision: "gRPC" });
+  });
+
+  it("council_route, council_usage и переопределение состава моделей в council_info", async () => {
+    const s = await start();
+    const r = await s.call("council_route", { request: "REST или gRPC для внутреннего API?" });
+    expect(r.text).toMatch(/^Команда: \/council-debate \(high\)/);
+    expect(r.structured).toMatchObject({
+      command: "council-debate",
+      args: { options: ["REST", "gRPC"] },
+    });
+    expect((await s.call("council_route", { request: "Поправь опечатку" })).text).toMatch(
+      /^Совет не нужен/,
+    );
+    expect((await s.call("council_usage", {})).text).toBe("Запусков с учётом расхода пока нет.");
+
+    type Info = { config: { models: { id: string }[] } };
+    const set = await s.call("council_info", { models: ["model-a", "model-x"] });
+    expect((JSON.parse(set.text) as Info).config.models.map((m) => m.id)).toEqual([
+      "model-a",
+      "model-x",
+    ]);
+    expect((await s.call("council_info", { models: ["only-one"] })).result.isError).toBe(true);
+    const reset = await s.call("council_info", { reset: true });
+    expect((JSON.parse(reset.text) as Info).config.models).toHaveLength(3);
   });
 
   it("HTTP: токен обязателен вне loopback и проверяется", async () => {

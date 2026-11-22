@@ -11,7 +11,7 @@
     "council": "dist/cli/index.js"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "node scripts/gen-templates.mjs && tsup",
     "dev": "tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -19,7 +19,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
-    "test:e2e": "COUNCIL_E2E=1 vitest run test/e2e"
+    "test:e2e": "COUNCIL_E2E=1 vitest run test/e2e",
+    "gen": "node scripts/gen-templates.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.9.1",

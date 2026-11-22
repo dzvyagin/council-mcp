@@ -144,23 +144,29 @@ describe("CLI", () => {
   });
 
   it("doctor: эндпоинт, модели и агент", async () => {
+    const checkAgent = () =>
+      Promise.resolve([{ name: "участники", level: "ok" as const, detail: "fake" }]);
     const good = await run(["doctor"], baseEnv, {
+      checkAgent,
       fetch: fakeFetch(200, {
         data: [{ id: "model-a", context_length: 128000 }, { id: "model-b" }, { id: "model-c" }],
       }),
     });
     expect(good.code).toBe(0);
-    expect(good.out).toMatch(/✓ модель model-a · контекст 128000 \(в конфиге 32000\)/);
+    expect(good.out).toMatch(
+      /✓ модель model-a: есть в \/models · контекст 128000 \(в конфиге 32000\)/,
+    );
     expect(good.out).toMatch(/✓ участники: fake/);
 
     const missing = await run(["doctor"], baseEnv, {
+      checkAgent,
       fetch: fakeFetch(200, { data: [{ id: "model-a" }] }),
     });
     expect(missing.code).toBe(1);
     expect(missing.out).toMatch(/✗ модель model-b: нет в списке \/models/);
 
-    const denied = await run(["doctor"], baseEnv, { fetch: fakeFetch(401, {}) });
-    expect(denied.out).toMatch(/✗ эндпоинт .*ключ не принят \(HTTP 401\)/);
+    const denied = await run(["doctor"], baseEnv, { checkAgent, fetch: fakeFetch(401, {}) });
+    expect(denied.out).toMatch(/✗ эндпоинт: .*ключ не принят \(HTTP 401\)/);
     expect(denied.out).not.toContain(baseEnv.COUNCIL_API_KEY);
   });
 });

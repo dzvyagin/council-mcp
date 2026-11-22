@@ -1,6 +1,10 @@
 import { parseArgs } from "node:util";
 
+import { fileURLToPath } from "node:url";
+
 import { nodeConfigDeps, type CouncilConfig } from "../core/config.js";
+import { checkAgent } from "../drivers/acp/check.js";
+import { which } from "../drivers/acp/profiles.js";
 import { Redactor } from "../core/context/redact.js";
 import type { ParticipantDriver } from "../core/participant.js";
 import { createLogger } from "../mcp/logger.js";
@@ -36,7 +40,14 @@ export async function runMcp(
   if (waitS !== undefined && (!Number.isInteger(waitS) || waitS < 0))
     throw new Error("--wait-s: целое число секунд");
 
-  const runtime = new CouncilRuntime({ configDeps: nodeConfigDeps, makeDriver, logger });
+  const runtime = new CouncilRuntime({
+    configDeps: nodeConfigDeps,
+    makeDriver,
+    logger,
+    checkAgent,
+    which: (command) => which(command),
+    bundlePath: fileURLToPath(import.meta.url),
+  });
   const state = runtime.config();
   if (!state.ok)
     logger.warn(
