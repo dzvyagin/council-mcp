@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { shuffle } from "../anonymize.js";
+import type { PriorDecision } from "../context/prior.js";
 import type { CouncilSession } from "../engine.js";
 import type { AnswerTool } from "../participant.js";
 import { newNonce } from "../prompts/common.js";
@@ -20,6 +21,7 @@ export interface VoteInput {
   options?: string[];
   notes?: string;
   files?: string[];
+  prior?: PriorDecision[];
 }
 
 export function voteAnswerSchema(options?: string[]) {
@@ -137,6 +139,7 @@ export async function runVote(
       ...(input.options && { options: shuffle(input.options, `${seed}:${seat.alias}`) }),
       ...(input.notes !== undefined && { notes: input.notes }),
       ...(input.files && { files: input.files }),
+      ...(input.prior && { prior: input.prior }),
       nonce,
       toolName: tool.name,
     }),

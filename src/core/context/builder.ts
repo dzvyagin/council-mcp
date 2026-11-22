@@ -1,15 +1,18 @@
 import type { DataBlock } from "../prompts/common.js";
+import { type PriorDecision, renderPrior } from "./prior.js";
 
 /**
  * Пакет контекста от хоста. Участники сами исследуют проект, поэтому здесь только то, чего
  * в репозитории нет: ограничения и требования (notes), дифф (для review) и подсказки,
- * с каких файлов начать. Общий размер ограничен max_bytes.
+ * с каких файлов начать, включая прежние ADR по теме. Общий размер ограничен max_bytes.
  */
 
 export interface ContextInput {
   notes?: string;
   diff?: string;
   files?: string[];
+  /** Прежние ADR по близкой теме (находит ядро, не хост). */
+  prior?: PriorDecision[];
   maxBytes?: number;
 }
 
@@ -36,6 +39,7 @@ export function buildContext(input: ContextInput): DataBlock[] {
     blocks.push({ name, content: text });
   };
   add("notes", input.notes);
+  add("prior_decisions", input.prior ? renderPrior(input.prior) : undefined);
   if (input.files && input.files.length > 0) {
     add("files", `С чего начать изучение:\n${input.files.map((f) => `- ${f}`).join("\n")}`);
   }

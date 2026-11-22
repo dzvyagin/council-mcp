@@ -64,7 +64,11 @@ describe("deliberate: vote", () => {
       expect(p.prompt).not.toMatch(/model-[abc]/);
       expect(p.prompt).toContain("submit_vote");
     }
-    const strip = (s: string) => s.replace(/[0-9a-f]{12}/g, "NONCE");
+    // Второй запуск видит ADR первого среди прежних решений — этот блок не сравниваем.
+    const strip = (s: string) =>
+      s
+        .replace(/[0-9a-f]{12}/g, "NONCE")
+        .replace(/<<<COUNCIL_PRIOR_DECISIONS_NONCE[\s\S]*?COUNCIL_PRIOR_DECISIONS_NONCE>>>/g, "");
     expect(d1.prompts.map((p) => [p.alias, strip(p.prompt)])).toEqual(
       d2.prompts.map((p) => [p.alias, strip(p.prompt)]),
     );

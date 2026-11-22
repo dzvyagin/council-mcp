@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 import { DEFAULT_PROTECTED_PATHS } from "../core/config.js";
 import { route, type Route } from "../core/router.js";
 import { readDecisions } from "../core/state/files.js";
+import { openSummary } from "../core/state/open.js";
 import { WorkflowStore } from "../core/workflow/state.js";
 
 /**
@@ -154,7 +155,11 @@ export async function councilSummary(projectDir: string): Promise<string | undef
     .filter((d) => d.adr_path)
     .slice(-3)
     .reverse();
-  if (!active && decisions.length === 0) return undefined;
+  const open = await openSummary(
+    settings.adrDir,
+    relative(projectDir, join(settings.stateDir, "OPEN.md")).split("\\").join("/"),
+  );
+  if (!active && decisions.length === 0 && !open) return undefined;
   const lines = ["<council-state>"];
   if (active) {
     const gates = (["discover", "define", "develop", "deliver"] as const)
@@ -181,6 +186,7 @@ export async function councilSummary(projectDir: string): Promise<string | undef
     for (const d of decisions)
       lines.push(`- ${d.adr_path ?? d.run_id}: ${d.question.slice(0, 100)} (${d.status})`);
   }
+  if (open) lines.push(open);
   lines.push("</council-state>");
   return lines.join("\n");
 }

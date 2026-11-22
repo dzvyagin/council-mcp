@@ -9,6 +9,7 @@ import { buildPanel, type SeatSpec } from "./panel.js";
 
 import type { CouncilConfig } from "./config.js";
 import { DEFAULT_MAX_BYTES } from "./context/builder.js";
+import { findPriorDecisions, type PriorDecision } from "./context/prior.js";
 import { Redactor } from "./context/redact.js";
 import { CouncilSession } from "./engine.js";
 import { noopSink, type EventSink } from "./events.js";
@@ -17,6 +18,7 @@ import { consensusAdr, voteAdr } from "./output/adr-data.js";
 import { dissentText, renderReport } from "./output/report.js";
 import { TranscriptWriter } from "./output/transcript.js";
 import { recordDecision, recordIntegrity } from "./state/files.js";
+import { rebuildOpen } from "./state/open.js";
 import { createWorktree, renderPlan, type Handoff } from "./workflow/worktree.js";
 import type { AnswerTool, ParticipantDriver } from "./participant.js";
 import { consensusTools, TOOLS } from "./protocols/consensus-schemas.js";
@@ -65,6 +67,8 @@ export interface DeliberateInput {
   /** По умолчанию ADR пишется для goal decision/plan/implement и любого итога, кроме failed. */
   writeAdr?: boolean;
   adrTitle?: string;
+  /** Прежние ADR по теме — заполняет deliberate, со входа не принимается. */
+  prior?: PriorDecision[];
 }
 
 export interface Budget {
@@ -283,6 +287,7 @@ async function runProtocol(
         ...(input.options && { options: input.options }),
         ...(input.notes !== undefined && { notes: input.notes }),
         ...(input.files && { files: input.files }),
+        ...(input.prior && { prior: input.prior }),
       },
       seed,
     );
@@ -565,7 +570,13 @@ export async function deliberate(
   const signal = deps.signal ?? new AbortController().signal;
   const artifacts = deps.artifacts ?? true;
   const redactor = new Redactor([config.endpoint.apiKey.reveal()]);
-  const safeInput = redactInput(input, redactor);
+  const prior = artifacts
+    ? await findPriorDecisions(config.paths.adrDir, config.workspace, input.question)
+    : [];
+  // Вход хоста не может подложить «прежние решения»: поле заполняет только ядро.
+  const redacted = redactInput(input, redactor);
+  delete redacted.prior;
+  const safeInput: DeliberateInput = prior.length > 0 ? { ...redacted, prior } : redacted;
   const started = now();
   const rel = (path: string) => relative(config.workspace, path);
 
@@ -650,6 +661,12 @@ export async function deliberate(
         adrPath = rel((await writeAdr(config.paths.adrDir, redactor.deep(data))).path);
       } catch (e) {
         warnings.push(`ADR не записан: ${(e as Error).message}`);
+      }
+      // Реестр открытых вопросов и рисков по всем действующим ADR.
+      if (adrPath) {
+        await rebuildOpen(config.paths.adrDir, config.paths.stateDir).catch((e: unknown) => {
+          warnings.push(`.council/OPEN.md не обновлён: ${(e as Error).message}`);
+        });
       }
     }
 

@@ -1,3 +1,4 @@
+import { type PriorDecision, renderPrior } from "../context/prior.js";
 import { buildPrompt, type DataBlock } from "./common.js";
 
 export interface VotePromptInput {
@@ -6,6 +7,7 @@ export interface VotePromptInput {
   options?: string[];
   notes?: string;
   files?: string[];
+  prior?: PriorDecision[];
   role?: string;
   nonce: string;
   toolName: string;
@@ -36,6 +38,8 @@ export function votePrompt(input: VotePromptInput): string {
     });
   }
   if (input.notes) data.push({ name: "notes", content: input.notes });
+  const prior = input.prior ? renderPrior(input.prior) : undefined;
+  if (prior) data.push({ name: "prior_decisions", content: prior });
   if (input.files && input.files.length > 0) {
     data.push({ name: "files", content: `С чего начать изучение:\n${input.files.join("\n")}` });
   }
