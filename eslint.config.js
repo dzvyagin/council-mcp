@@ -2,7 +2,8 @@
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist/", "coverage/", "node_modules/"] },
+  // integrations/ — шаблоны для хостов (плагин opencode импортирует @opencode/plugin хоста).
+  { ignores: ["dist/", "coverage/", "node_modules/", "integrations/"] },
   {
     files: ["**/*.ts"],
     extends: [...tseslint.configs.strictTypeChecked],

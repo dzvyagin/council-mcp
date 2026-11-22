@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { TEMPLATES } from "./templates.generated.js";
 
@@ -76,6 +77,12 @@ export async function runSetup(o: SetupOptions): Promise<SetupResult> {
     )) {
       await put(`.opencode/${name.slice("opencode/".length)}`, template(name));
     }
+    // Плагин: защита путей, сводка процесса, подсказка роутера; логика — в dist/plugin/lib.js.
+    const lib = pathToFileURL(join(dirname(o.bundlePath), "..", "plugin", "lib.js")).href;
+    await put(
+      ".opencode/plugins/council.ts",
+      template("opencode/plugins/council.ts").replace("__COUNCIL_PLUGIN_LIB__", lib),
+    );
     const configs = ["opencode.jsonc", "opencode.json"].filter((f) =>
       existsSync(join(o.workspace, f)),
     );

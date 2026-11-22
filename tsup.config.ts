@@ -2,7 +2,8 @@ import { defineConfig } from "tsup";
 
 // Один самодостаточный файл на точку входа: запуск без npm install (нет корпоративного npm).
 export default defineConfig({
-  entry: { "cli/index": "src/cli/index.ts" },
+  // plugin/lib — логика плагина opencode (защита путей, сводка, роутер), его импортирует файл плагина.
+  entry: { "cli/index": "src/cli/index.ts", "plugin/lib": "src/plugin/lib.ts" },
   format: ["esm"],
   platform: "node",
   target: "node22",
