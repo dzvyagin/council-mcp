@@ -282,3 +282,17 @@ E2E с настоящим opencode 2.3.2 (фейковый провайдер): 
 - Отдельные фазы (`/council-discover` и др.) — это `council_deliberate` с соответствующим режимом, без процесса.
 - Код в develop пишет хост-агент: «сквозной прогон в supervised на учебной задаче» с живым агентом и интерфейсом opencode не проводился — проверено e2e с имитацией хоста.
 - Найдено и исправлено: worktree создавал `.council/` без `.council/.gitignore`.
+
+### Фаза 8 — готово
+
+Сделано: `council_doctor` / `council doctor` (`src/core/doctor.ts`: конфиг, эндпоинт и модели с контекстом, агент-участник и версия opencode, ripgrep, git, права на запись в docs/adr и .council, `.council` вне git); `council_usage` / `council usage` (`src/core/usage.ts`: расход по моделям, режимам, персонам, дням из транскриптов; только токены); `council_route` / `council route` (`src/core/router.ts`: детерминированная таблица правил с приоритетами, извлечение двух вариантов для debate, флаги panel/style/research_first); `council_info` с переопределением состава моделей на сессию (`models`, `reset`); `council setup` (`src/cli/setup.ts`: команды и агенты opencode, Skill в `.agents/skills` и `.claude/skills`, `.mcp.json` для Claude Code, YAML для DSH, AGENTS.md, `council.config.json` без секретов, `.council/` в `.gitignore`, затем doctor; чужие файлы не редактирует); MCP-промпт `setup` с абсолютным путём к бандлу; команды `/council-setup`, `/council-doctor`, `/council-usage`, `/council-models`, `/council-auto`. Шаблоны интеграций встроены в бандл (`scripts/gen-templates.mjs` → `src/cli/templates.generated.ts`, тест на актуальность).
+
+Проверено: роутер верно раскладывает 14 запросов (12 команд и два «совет не нужен»); setup в чистом репозитории, повторный запуск ничего не меняет, чужие opencode.json и AGENTS.md не ломаются; usage по реальным транскриптам; e2e на настоящем opencode — `council setup` в чистом git-репозитории (собранный бандл) → `/council` из сгенерированных файлов доходит до отчёта и ADR, `.council` вне git.
+
+Найдено и исправлено: `opencode --version` печатает `opencode v2.3.2` — doctor ложно требовал opencode V2.
+
+Отклонения:
+
+- `/council-setup` — CLI `council setup` (файлы в проект пишет только явная команда пользователя), из opencode запускается агентом по команде или MCP-промпту `/council:setup`.
+- Роутер — правила, а не вызов модели: мгновенно и без расхода; для пограничных запросов (`medium`/`low`) агент может уточнить у пользователя.
+- `/council-models` переопределяет состав до перезапуска MCP-сервера, не пишет в конфиг.
