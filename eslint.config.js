@@ -26,6 +26,14 @@ export default tseslint.config(
               group: ["@modelcontextprotocol/*"],
               message: "core не зависит от MCP SDK: используй адаптер в src/mcp.",
             },
+            {
+              group: ["@agentclientprotocol/*"],
+              message: "core не знает, как запущены участники: ACP — в src/drivers/acp.",
+            },
+            {
+              group: ["**/drivers/**", "**/mcp/**", "**/cli/**"],
+              message: "core не импортирует адаптеры.",
+            },
           ],
         },
       ],
