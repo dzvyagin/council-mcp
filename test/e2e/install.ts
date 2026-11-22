@@ -1,6 +1,7 @@
 /**
- * Установка council в изолированный opencode так же, как у пользователя: релиз в git-папку
- * (`scripts/release.mjs --dir`) и `opencode plugin add git+file://…` в отдельном HOME.
+ * Установка council в изолированный opencode так же, как у пользователя: файлы пакета
+ * (свежий бандл) в git-папку (`scripts/release.mjs --dir`) и `opencode plugin add git+file://…`
+ * в отдельном HOME.
  */
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
@@ -29,6 +30,7 @@ export function opencodeEnv(home: string): Record<string, string> {
 /** Ставит плагин из свежего релиза; возвращает HOME и путь к глобальному конфигу opencode. */
 export function installPlugin(opencode: string): { home: string; globalConfig: string } {
   const release = mkdtempSync(join(tmpdir(), "council-release-dir-"));
+  execFileSync("npm", ["run", "bundle"], { cwd: ROOT, stdio: "ignore" });
   execFileSync(process.execPath, [join(ROOT, "scripts/release.mjs"), "--dir", release], {
     cwd: ROOT,
     stdio: "ignore",

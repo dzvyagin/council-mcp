@@ -1,17 +1,27 @@
 {
   "name": "council-mcp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "MCP-сервер совета моделей: consensus, debate, vote и review с ADR",
   "type": "module",
   "engines": {
     "node": ">=22.12"
   },
+  "main": "./dist/opencode/plugin.js",
+  "exports": {
+    ".": "./dist/opencode/plugin.js",
+    "./server": "./dist/opencode/plugin.js"
+  },
   "bin": {
     "council": "dist/cli/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "integrations"
+  ],
   "scripts": {
-    "build": "node scripts/gen-templates.mjs && tsup",
+    "bundle": "node scripts/gen-templates.mjs && tsup",
     "dev": "tsx src/cli/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -23,21 +33,19 @@
     "gen": "node scripts/gen-templates.mjs",
     "release": "node scripts/release.mjs"
   },
-  "dependencies": {
+  "devDependencies": {
     "@agentclientprotocol/sdk": "2.9.1",
     "@modelcontextprotocol/node": "2.1.2",
     "@modelcontextprotocol/server": "2.4.0",
-    "pino": "10.4.0",
-    "zod": "4.6.7"
-  },
-  "devDependencies": {
     "@types/node": "22.20.5",
     "eslint": "10.15.0",
+    "pino": "10.4.0",
     "prettier": "3.10.1",
     "tsup": "9.0.0",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "typescript-eslint": "8.73.0",
-    "vitest": "5.1.1"
+    "vitest": "5.1.1",
+    "zod": "4.6.7"
   }
 }
