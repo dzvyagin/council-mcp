@@ -58,7 +58,7 @@ const HELP = `council — совет моделей для архитектур�
   council mcp [--http [--host 127.0.0.1] [--port 8765]] [--wait-s 45]
                       MCP-сервер (stdio по умолчанию; логи в stderr)
   council setup [--host opencode|dsh|claude|all] [--force]
-                      подготовить проект: команды, агенты, Skill, AGENTS.md, конфиг, .gitignore
+                      подготовить проект: команды, агенты, Skill, конфиг, .gitignore
   council doctor      проверить конфиг, эндпоинт, модели, агента-участника, права, окружение
   council usage [--days N] [--json]
                       фактический расход по моделям, режимам, персонам и дням

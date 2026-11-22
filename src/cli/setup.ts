@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { TEMPLATES } from "./templates.generated.js";
 
 /**
- * `council setup` — подготовка проекта: команды и агенты opencode, Skill, фрагмент AGENTS.md,
+ * `council setup` — подготовка проекта: команды и агенты opencode, Skill,
  * council.config.json, `.council/` в .gitignore, MCP-конфиг хоста. Существующие файлы
  * без --force не перезаписываются; чужой opencode.json(c) не редактируется — выводится блок.
  * Секреты в файлы не пишутся: только ссылки {env:...}.
@@ -31,8 +31,6 @@ export interface SetupResult {
   skipped: string[];
   notes: string[];
 }
-
-const AGENTS_MARKER = "## Совет моделей";
 
 export function mcpServerBlock(bundlePath: string): Record<string, unknown> {
   return {
@@ -140,18 +138,6 @@ export async function runSetup(o: SetupOptions): Promise<SetupResult> {
         "        toolCallTimeoutMs: 60000",
       ].join("\n"),
     );
-  }
-
-  // AGENTS.md: фрагмент с правилами вызова совета.
-  const agentsMd = join(o.workspace, "AGENTS.md");
-  const fragment = template("opencode/AGENTS.fragment.md");
-  if (!existsSync(agentsMd)) {
-    await put("AGENTS.md", fragment);
-  } else if (!(await readFile(agentsMd, "utf8")).includes(AGENTS_MARKER)) {
-    await appendFile(agentsMd, `\n${fragment}`);
-    r.updated.push("AGENTS.md");
-  } else {
-    r.skipped.push("AGENTS.md (фрагмент уже есть)");
   }
 
   // council.config.json — без секретов.

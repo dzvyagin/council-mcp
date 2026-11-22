@@ -650,7 +650,7 @@ function registerPrompts(server: McpServer, runtime: CouncilRuntime): void {
     "setup",
     {
       title: "Совет: установка в проект",
-      description: "Команды, агенты, Skill, AGENTS.md, конфиг и .gitignore для совета",
+      description: "Команды, агенты, Skill, конфиг и .gitignore для совета",
     },
     () =>
       prompt(

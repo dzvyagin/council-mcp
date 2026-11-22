@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -18,7 +18,7 @@ const ws = () => realpathSync(mkdtempSync(join(tmpdir(), "council-svc-")));
 const BUNDLE = "/opt/council-mcp/dist/cli/index.js";
 
 describe("council setup", () => {
-  it("чистый репозиторий: команды, агенты, Skill, AGENTS.md, конфиг, .gitignore, opencode.jsonc", async () => {
+  it("чистый репозиторий: команды, агенты, Skill, конфиг, .gitignore, opencode.jsonc", async () => {
     const dir = ws();
     gitRepo(dir);
     const r = await runSetup({
@@ -37,7 +37,6 @@ describe("council setup", () => {
         ".opencode/agents/architect.md",
         ".opencode/agents/conductor.md",
         "opencode.jsonc",
-        "AGENTS.md",
         "council.config.json",
       ]),
     );
@@ -55,7 +54,7 @@ describe("council setup", () => {
       environment: { COUNCIL_API_KEY: "{env:COUNCIL_API_KEY}" },
     });
     expect(readFileSync(join(dir, ".gitignore"), "utf8")).toMatch(/^\.council\/$/m);
-    expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toContain("## Совет моделей");
+    expect(existsSync(join(dir, "AGENTS.md"))).toBe(false);
     // Конфиг валиден и без секретов.
     const cfgText = readFileSync(join(dir, "council.config.json"), "utf8");
     expect(cfgText).not.toMatch(/key|token|password/i);
@@ -77,15 +76,11 @@ describe("council setup", () => {
     expect(again.created).toEqual([]);
     expect(again.updated).toEqual([]);
     expect(again.skipped).toEqual(
-      expect.arrayContaining([
-        "AGENTS.md (фрагмент уже есть)",
-        "opencode.jsonc (council уже настроен)",
-        "council.config.json",
-      ]),
+      expect.arrayContaining(["opencode.jsonc (council уже настроен)", "council.config.json"]),
     );
   });
 
-  it("чужой opencode.json и AGENTS.md: файл не редактируется — блок для вставки; фрагмент дописывается", async () => {
+  it("чужой opencode.json и AGENTS.md не редактируются — для opencode.json выводится блок", async () => {
     const dir = ws();
     writeFileSync(join(dir, "opencode.json"), '{ "model": "x/y" }\n');
     writeFileSync(join(dir, "AGENTS.md"), "# Правила\n");
@@ -101,7 +96,7 @@ describe("council setup", () => {
     expect(r.notes.join("\n")).toMatch(
       /DeepSeek Harness[\s\S]*serverName: council[\s\S]*\/opt\/council-mcp\/dist\/cli\/index\.js/,
     );
-    expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toMatch(/^# Правила\n\n## Совет моделей/);
+    expect(readFileSync(join(dir, "AGENTS.md"), "utf8")).toBe("# Правила\n");
     expect(readFileSync(join(dir, ".gitignore"), "utf8")).toBe("node_modules/\n.council/\n");
     expect(JSON.parse(readFileSync(join(dir, ".mcp.json"), "utf8"))).toMatchObject({
       mcpServers: { council: { args: [BUNDLE, "mcp"] } },
