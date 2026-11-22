@@ -71,6 +71,17 @@ describe("loadConfig: env", () => {
     expect(issues).toEqual(["COUNCIL_MODELS: модели повторяются: a"]);
   });
 
+  it("«COUNCIL_MODELS=…» в значении отбрасывается; имя с «=» или пробелом — ошибка настройки", () => {
+    expect(
+      loadConfig(fakeDeps({ ...baseEnv, COUNCIL_MODELS: "COUNCIL_MODELS=m1,m2" })).models.map(
+        (m) => m.id,
+      ),
+    ).toEqual(["m1", "m2"]);
+    expect(issuesOf(() => loadConfig(fakeDeps({ ...baseEnv, COUNCIL_MODELS: "a,x=y" })))).toEqual([
+      "COUNCIL_MODELS: недопустимое имя модели «x=y» (пробелы или «=») — укажите имена так, как их называет эндпоинт",
+    ]);
+  });
+
   it("проверяет URL и числовые переменные", () => {
     const issues = issuesOf(() =>
       loadConfig(

@@ -73,10 +73,14 @@ export function councilOptions(
   options: Readonly<Record<string, unknown>> = {},
   env: Record<string, string | undefined> = process.env,
 ): CouncilOptions {
-  const str = (v: unknown): string | undefined =>
-    typeof v === "string" && v.trim() !== "" && !/^\{(env|file):/.test(v) ? v.trim() : undefined;
+  // «COUNCIL_X=значение» вместо «значение» — частая ошибка при переносе из shell.
+  const str = (v: unknown): string | undefined => {
+    if (typeof v !== "string") return undefined;
+    const t = v.trim().replace(/^COUNCIL_[A-Z_]+\s*=\s*/, "");
+    return t !== "" && !/^\{(env|file):/.test(t) ? t : undefined;
+  };
   const models = Array.isArray(options.models)
-    ? options.models.filter((m): m is string => typeof m === "string").join(",")
+    ? options.models.flatMap((m) => str(m) ?? []).join(",")
     : str(options.models);
   const pick: [string, string | undefined][] = [
     ["COUNCIL_BASE_URL", str(options.baseURL) ?? env.COUNCIL_BASE_URL],

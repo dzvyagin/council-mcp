@@ -283,6 +283,23 @@ describe("плагин opencode", () => {
     expect(opts.autoRouter).toBe("suggest");
   });
 
+  it("префикс «COUNCIL_X=» в значениях options отбрасывается", () => {
+    const opts = councilOptions(
+      {
+        models: ["COUNCIL_MODELS=VIP-Ext-MMB-DeepSeek-V4.1-Flash", "model-b"],
+        baseURL: "COUNCIL_BASE_URL=https://llm/v1",
+      },
+      {},
+    );
+    expect(opts.environment).toMatchObject({
+      COUNCIL_MODELS: "VIP-Ext-MMB-DeepSeek-V4.1-Flash,model-b",
+      COUNCIL_BASE_URL: "https://llm/v1",
+    });
+    expect(councilOptions({ models: "COUNCIL_MODELS=a,b" }, {}).environment.COUNCIL_MODELS).toBe(
+      "a,b",
+    );
+  });
+
   it("без options — окружение; неподставленный {env:…} считается пустым", () => {
     const opts = councilOptions(
       { apiKey: "{env:COUNCIL_API_KEY}", models: "x, y" },

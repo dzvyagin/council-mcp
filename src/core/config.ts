@@ -316,8 +316,15 @@ export function loadConfig(deps: ConfigDeps = nodeConfigDeps()): CouncilConfig {
 
   // Состав моделей: COUNCIL_MODELS выбирает модели и порядок, файл задаёт их параметры.
   const fileModels = new Map((file.models ?? []).map((m) => [m.id, m]));
-  const rawModels = deps.env.COUNCIL_MODELS;
+  // «COUNCIL_MODELS=a,b» вместо «a,b» — частая ошибка при переносе из shell в конфиг.
+  const rawModels = deps.env.COUNCIL_MODELS?.replace(/^\s*COUNCIL_MODELS\s*=\s*/, "");
   const ids = rawModels !== undefined ? parseModelList(rawModels) : [...fileModels.keys()];
+  for (const id of ids) {
+    if (/[\s=]/.test(id))
+      issues.push(
+        `COUNCIL_MODELS: недопустимое имя модели «${id}» (пробелы или «=») — укажите имена так, как их называет эндпоинт`,
+      );
+  }
   const duplicates = ids.filter((id, i) => ids.indexOf(id) !== i);
   if (duplicates.length > 0) {
     issues.push(`COUNCIL_MODELS: модели повторяются: ${[...new Set(duplicates)].join(", ")}`);

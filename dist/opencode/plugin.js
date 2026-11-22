@@ -20350,8 +20350,12 @@ var here = dirname(fileURLToPath(import.meta.url));
 var CLI_PATH = join6(here, "..", "cli", "index.js");
 var SKILL_PATH = join6(here, "SKILL.md");
 function councilOptions(options = {}, env = process.env) {
-  const str = (v) => typeof v === "string" && v.trim() !== "" && !/^\{(env|file):/.test(v) ? v.trim() : void 0;
-  const models = Array.isArray(options.models) ? options.models.filter((m) => typeof m === "string").join(",") : str(options.models);
+  const str = (v) => {
+    if (typeof v !== "string") return void 0;
+    const t = v.trim().replace(/^COUNCIL_[A-Z_]+\s*=\s*/, "");
+    return t !== "" && !/^\{(env|file):/.test(t) ? t : void 0;
+  };
+  const models = Array.isArray(options.models) ? options.models.flatMap((m) => str(m) ?? []).join(",") : str(options.models);
   const pick2 = [
     ["COUNCIL_BASE_URL", str(options.baseURL) ?? env.COUNCIL_BASE_URL],
     ["COUNCIL_API_KEY", str(options.apiKey) ?? env.COUNCIL_API_KEY],

@@ -24549,8 +24549,14 @@ function loadConfig(deps = nodeConfigDeps()) {
   const fileText = deps.readFile(configPath);
   const file2 = parseConfigFile(configPath, fileText, explicitPath !== void 0, issues) ?? {};
   const fileModels = new Map((file2.models ?? []).map((m) => [m.id, m]));
-  const rawModels = deps.env.COUNCIL_MODELS;
+  const rawModels = deps.env.COUNCIL_MODELS?.replace(/^\s*COUNCIL_MODELS\s*=\s*/, "");
   const ids = rawModels !== void 0 ? parseModelList(rawModels) : [...fileModels.keys()];
+  for (const id of ids) {
+    if (/[\s=]/.test(id))
+      issues.push(
+        `COUNCIL_MODELS: \u043D\u0435\u0434\u043E\u043F\u0443\u0441\u0442\u0438\u043C\u043E\u0435 \u0438\u043C\u044F \u043C\u043E\u0434\u0435\u043B\u0438 \xAB${id}\xBB (\u043F\u0440\u043E\u0431\u0435\u043B\u044B \u0438\u043B\u0438 \xAB=\xBB) \u2014 \u0443\u043A\u0430\u0436\u0438\u0442\u0435 \u0438\u043C\u0435\u043D\u0430 \u0442\u0430\u043A, \u043A\u0430\u043A \u0438\u0445 \u043D\u0430\u0437\u044B\u0432\u0430\u0435\u0442 \u044D\u043D\u0434\u043F\u043E\u0438\u043D\u0442`
+      );
+  }
   const duplicates = ids.filter((id, i) => ids.indexOf(id) !== i);
   if (duplicates.length > 0) {
     issues.push(`COUNCIL_MODELS: \u043C\u043E\u0434\u0435\u043B\u0438 \u043F\u043E\u0432\u0442\u043E\u0440\u044F\u044E\u0442\u0441\u044F: ${[...new Set(duplicates)].join(", ")}`);
